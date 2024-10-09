@@ -1,0 +1,16 @@
+**/.thrash
+*.bfg_colors
+*.gfa
+*.fasta
+*.fastq
+*.fastq.gz
+*.fasta.gz
+**/compile_commands.json
+**/pangrowth
+**/hist.txt
+**/pangenome_growth.txt
+**/Francisella_tularensis
+**/.snakemake
+**/plots
+**/.cache
+benchmark
