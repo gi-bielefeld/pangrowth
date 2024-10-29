@@ -21,11 +21,11 @@ Parmigiani, L., Wittler, R., Stoye, J.,: [Revisiting pangenome openness with _k_
    * [Pangrowth](#pangrowth)
       * [Table of Contents](#table-of-contents)
       * [Install](#install)
-         * [Build Pangrowth](#build-pangrowth)
       * [Usage](#usage)
          * [Histogram from fasta files](#histogram-from-fasta-files)
          * [Pangenome growth (from histogram or pan-matrix)](#pangenome-growth-from-histogram-or-pan-matrix)
          * [Pangenome core (from histogram or pan-matrix)](#pangenome-core-from-histogram-or-pan-matrix)
+      * [Contact](#contact) 
 <!--te-->
 
 ## Install
@@ -132,3 +132,7 @@ the number of genomes.
 <p align="center">
     <img src="png/core.png" width="700" alt="k-mer core size of multiple ecoli">
 </p>
+
+## Contact
+
+For any question, feedback or problem, please feel free to file an [issue](https://github.com/gi-bielefeld/pangrowth/issues/new) on Github or contact me [here](mailto:pangenomics-service@cebitec.uni-bielefeld.de) and I will get back to you as soon as possible.
