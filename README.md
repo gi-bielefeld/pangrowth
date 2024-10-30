@@ -136,3 +136,5 @@ the number of genomes.
 ## Contact
 
 For any question, feedback or problem, please feel free to file an [issue](https://github.com/gi-bielefeld/pangrowth/issues/new) on Github or contact me [here](mailto:pangenomics-service@cebitec.uni-bielefeld.de) and I will get back to you as soon as possible.
+
+Pangrowth is provided as a service of the [German Network for Bioinformatics Infrastructure (de.NBI)](https://www.denbi.de/). We would appriciate if you would participate in the evaluation of Pangrwoth by completing this [very short survey](https://www.surveymonkey.de/r/denbi-service?sc=bigi&tool=pangrowth).
