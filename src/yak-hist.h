@@ -17,6 +17,17 @@
 #define N_COUNTS     8192
 #define MAX_COUNT    ((1<<TOTAL_BITS)-1)
 
+char* bits2kmer(uint64_t kmer_bits, int k) {
+    char nucleotides[4] = {'A','C','G','T'};
+    char *kmer_char;
+    CALLOC(kmer_char, k+1);
+    for (int i = 0; i < k; i++) {
+        kmer_char[i] = nucleotides[(kmer_bits>>(2*k-(i+1)*2)) & 3];
+    }
+    kmer_char[k] ='\0';
+    return kmer_char;
+}
+
 int ID_GENOME = 1;
 int NUM_GENOMES;
 int TOTAL_BITS;
@@ -25,9 +36,9 @@ int MASK_COUNT;
 int MASK_GENOME;
 int SUF;
 
-#define ch_eq(a, b) ((a)>>SUF == (b)>>SUF) // lower 8 bits for counts; higher bits for k-mer
-#define ch_hash(a) ((a)>>SUF)
-KHASHL_MAP_INIT(, ht_t, ht, uint64_t, int32_t, ch_hash, ch_eq)
+#define ch_eq(a, b) ((a) == (b)) // lower 8 bits for counts; higher bits for k-mer
+#define ch_hash(a) ((a))
+KHASHL_MAP_INIT(, hashtable_t, ht, uint64_t, int32_t, ch_hash, ch_eq)
 
 typedef struct {
 	int32_t k;
@@ -36,64 +47,65 @@ typedef struct {
     bool canonical;
 	int64_t chunk_size;
     char* filelist;
-} copt_t;
+} param_t;
 
 typedef struct {
-	ht_t *h;
+	hashtable_t *ht;
 } ch1_t;
 
 typedef struct {
 	int k, suf, n_hash, n_shift;
 	uint64_t tot;
-	ch1_t *h;
-} ch_t;
+	ch1_t *ht;
+} multi_hashtable_t;
 
 
 static inline uint64_t hash64(uint64_t key, uint64_t mask) // invertible integer hash function
 {
-	key = (~key + (key << 21)) & mask; // key = (key << 21) - key - 1;
-	key = key ^ key >> 24;
-	key = ((key + (key << 3)) + (key << 8)) & mask; // key * 265
-	key = key ^ key >> 14;
-	key = ((key + (key << 2)) + (key << 4)) & mask; // key * 21
-	key = key ^ key >> 28;
-	key = (key + (key << 31)) & mask;
+	//key = (~key + (key << 21)) & mask; // key = (key << 21) - key - 1;
+	//key = key ^ key >> 24;
+	//key = ((key + (key << 3)) + (key << 8)) & mask; // key * 265
+	//key = key ^ key >> 14;
+	//key = ((key + (key << 2)) + (key << 4)) & mask; // key * 21
+	//key = key ^ key >> 28;
+	//key = (key + (key << 31)) & mask;
 	return key;
 }
 
 /*** hash table ***/
-ch_t *ch_init(int k, int suf) {
-	ch_t *h;
+multi_hashtable_t *ch_init(int k, int suf) {
+	multi_hashtable_t *ht;
 	int i;
 	//if (suf < TOTAL_BITS) return 0; //suf must be greater or equal (here is equal)
-	CALLOC(h, 1);
-	h->k = k, h->suf = suf;
-	CALLOC(h->h, 1<<h->suf);
-	for (i = 0; i < 1<<h->suf; ++i)
-		h->h[i].h = ht_init();
-	return h;
+	CALLOC(ht, 1);
+	ht->k = k, ht->suf = suf;
+	CALLOC(ht->ht, 1<<ht->suf);
+	for (i = 0; i < 1<<ht->suf; ++i)
+		ht->ht[i].ht = ht_init();
+	return ht;
 }
 
-void ch_destroy(ch_t *h) {
+void ch_destroy(multi_hashtable_t *ht) {
 	int i;
-	if (h == 0) return;
-	for (i = 0; i < 1<<h->suf; ++i)
-		ht_destroy(h->h[i].h);
-	free(h->h); free(h);
+	if (ht == 0) return;
+	for (i = 0; i < 1<<ht->suf; ++i)
+		ht_destroy(ht->ht[i].ht);
+	free(ht->ht); free(ht);
 }
 
-int ch_insert_list(ch_t *h, int n, const uint64_t *a) {
+int ch_insert_list(multi_hashtable_t *ht, int n, const uint64_t *a) {
 	if (n == 0) return 0;
-	int mask = (1<<h->suf) - 1, n_ins = 0;
-	ch1_t *g = &h->h[a[0]&mask];
+    uint64_t mask = ((1<<(ht->suf+2))-4);
+    int n_ins = 0;
+	ch1_t *g = &ht->ht[(a[0]&mask)>>2];
 	for (int j = 0; j < n; ++j) {
 		int absent;
-        //khint_t k = ht_put(g->h, a[j]&(~mask), &absent);
-        khint_t k = ht_put(g->h, a[j], &absent);
+        //khint_t k = ht_put(g->ht, a[j]&(~mask), &absent);
+        khint_t k = ht_put(g->ht, a[j], &absent);
+        //printf("%s %d\n",bits2kmer(a[j],ht->k+1), absent);
         if (absent) ++n_ins;
-        if (((kh_val(g->h, k)&MASK_GENOME) >> BITS_GENOME) != ID_GENOME) {
-            kh_val(g->h, k) = ((kh_val(g->h, k)+1) & (~MASK_GENOME)) | 
-                              (ID_GENOME << BITS_GENOME);
+        if (((kh_val(g->ht, k)&MASK_GENOME) >> BITS_GENOME) != ID_GENOME) {
+            kh_val(g->ht, k) = ((kh_val(g->ht, k)+1) & (~MASK_GENOME)) | (ID_GENOME << BITS_GENOME);
         }
 	}
 	return n_ins;
@@ -105,28 +117,27 @@ typedef struct {
 } buf_cnt_t;
 
 typedef struct {
-	const ch_t *h;
+	const multi_hashtable_t *ht;
 	buf_cnt_t *cnt;
 } hist_aux_t;
 
-static void worker_hist(void *data, long i, int tid) // callback for kt_for()
-{
+static void worker_hist(void *data, long i, int tid) { // callback for kt_for()
 	hist_aux_t *a = (hist_aux_t*)data;
 	uint64_t *cnt = a->cnt[tid].c;
-	ht_t *g = a->h->h[i].h;
-	khint_t k;
-	for (k = 0; k < kh_end(g); ++k)
-		if (kh_exist(g, k))
-            ++cnt[kh_val(g, k)&MASK_COUNT];
+	hashtable_t *g = a->ht->ht[i].ht;
+	khint_t j;
+	for (j = 0; j < kh_end(g); ++j)
+		if (kh_exist(g, j))
+            ++cnt[kh_val(g, j)&MASK_COUNT];
 }
 
-void ch_hist(const ch_t *h, int64_t cnt[N_COUNTS], int n_thread) {
+void hist(const multi_hashtable_t *ht, int64_t cnt[N_COUNTS], int n_thread) {
 	hist_aux_t a;
 	int i, j;
-	a.h = h;
+	a.ht = ht;
 	memset(cnt, 0, (NUM_GENOMES+1) * sizeof(uint64_t));
 	CALLOC(a.cnt, n_thread); // count is divide for number of threads
-	kt_for(n_thread, worker_hist, &a, 1<<h->suf);
+	kt_for(n_thread, worker_hist, &a, 1<<ht->suf);
 	for (i = 0; i <= NUM_GENOMES; ++i) cnt[i] = 0; //This will be the total amount
 	for (j = 0; j < n_thread; ++j)
 		for (i = 0; i <= NUM_GENOMES; ++i)
@@ -173,13 +184,13 @@ unsigned char seq_nt4_table[256] = { // translate ACGT to 0123
 	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4
 };
 
-void copt_init(copt_t *o) {
-	memset(o, 0, sizeof(copt_t));
-	o->k = 17;
-	o->suf = 10;
-	o->n_thread = 4;
-	o->canonical = true;
-	o->chunk_size = 10000000;
+void copt_init(param_t *options) {
+	memset(options, 0, sizeof(param_t));
+	options->k = 17;
+	options->suf = 10;
+	options->n_thread = 4;
+	options->canonical = true;
+	options->chunk_size = 10000000;
 }
 
 typedef struct {
@@ -190,10 +201,14 @@ typedef struct {
 
 // insert a k-mer $y to a linear buffer
 static inline void ch_insert_buf(ch_buf_t *buf, int suf, uint64_t y) {
-    uint64_t y_suf = y & ((1<<suf) - 1);
+    uint64_t mask = ((1<<(suf+2))-4);
+    uint64_t y_suf = (y & mask)>>2;
+    //printf("%s\n", bits2kmer(y, 5));
+    //printf("%s %ld\n\n", bits2kmer(y_suf, 5), y_suf);
+    //uint64_t y_suf = y & ((1<<suf) - 1);
 	ch_buf_t *b = &buf[y_suf];
 	if (b->n == b->m) {
-		b->m = b->m < 8? 8 : b->m + (b->m>>1);
+		b->m = b->m < 8 ? 8 : b->m + (b->m>>1);
 		REALLOC(b->a, b->m);
 	}
 	b->a[b->n++] = y;
@@ -232,9 +247,9 @@ static void count_seq_buf(ch_buf_t *buf, int k, int suf, int len, const char *se
 }
 
 typedef struct { // global data structure for kt_pipeline()
-	const copt_t *opt;
-	kseq_t *ks;
-	ch_t *h;
+	const param_t *param;
+	kseq_t *kseq;
+	multi_hashtable_t *ht;
 } pldat_t;
 
 typedef struct { // data structure for each step in kt_pipeline()
@@ -248,8 +263,8 @@ typedef struct { // data structure for each step in kt_pipeline()
 static void worker_for(void *data, long i, int tid) { // callback for kt_for()
 	stepdat_t *s = (stepdat_t*)data;
 	ch_buf_t *buf = &s->buf[i];
-	ch_t *h = s->p->h;
-	buf->n_ins += ch_insert_list(h, buf->n, buf->a);
+	multi_hashtable_t *ht = s->p->ht;
+	buf->n_ins += ch_insert_list(ht, buf->n, buf->a);
 }
 
 static void *worker_pipeline(void *data, int step, void *in) { // callback for kt_pipeline()
@@ -259,41 +274,42 @@ static void *worker_pipeline(void *data, int step, void *in) { // callback for k
 		stepdat_t *s;
 		CALLOC(s, 1);
 		s->p = p;
-		while ((ret = kseq_read(p->ks)) >= 0) {
-			int l = p->ks->seq.l;
-			if (l < p->opt->k) continue;
+		while ((ret = kseq_read(p->kseq)) >= 0) {
+			int l = p->kseq->seq.l;
+			if (l < p->param->k) continue;
 			if (s->n == s->m) {
 				s->m = s->m < 16? 16 : s->m + (s->n>>1);
 				REALLOC(s->len, s->m);
 				REALLOC(s->seq, s->m);
 			}
 			MALLOC(s->seq[s->n], l);
-			memcpy(s->seq[s->n], p->ks->seq.s, l);
+			memcpy(s->seq[s->n], p->kseq->seq.s, l);
 			s->len[s->n++] = l;
 			s->sum_len += l;
-			s->nk += l - p->opt->k + 1;
-			if (s->sum_len >= p->opt->chunk_size)
+			s->nk += l - p->param->k + 1;
+			if (s->sum_len >= p->param->chunk_size)
 				break;
 		}
 		if (s->sum_len == 0) free(s);
 		else return s;
 	} else if (step == 1) { // step 2: extract k-mers
 		stepdat_t *s = (stepdat_t*)in;
-		int i, n = 1<<p->opt->suf, m;
+		int i, m;
+        int n = 1<<p->param->suf;
 		CALLOC(s->buf, n);
 		m = (int)(s->nk * 1.2 / n) + 1;
 		for (i = 0; i < n; ++i) {
 			s->buf[i].m = m;
 			MALLOC(s->buf[i].a, m);
 		}
-        if (p->opt->canonical) {
+        if (p->param->canonical) {
             for (i = 0; i < s->n; ++i) {
-                count_seq_buf_can(s->buf, p->opt->k, p->opt->suf, s->len[i], s->seq[i]);
+                count_seq_buf_can(s->buf, p->param->k+1, p->param->suf, s->len[i], s->seq[i]);
                 free(s->seq[i]);
             }
         } else {
             for (i = 0; i < s->n; ++i) {
-                count_seq_buf(s->buf, p->opt->k, p->opt->suf, s->len[i], s->seq[i]);
+                count_seq_buf(s->buf, p->param->k+1, p->param->suf, s->len[i], s->seq[i]);
                 free(s->seq[i]);
             }
         }
@@ -301,38 +317,38 @@ static void *worker_pipeline(void *data, int step, void *in) { // callback for k
 		return s;
 	} else if (step == 2) { // step 3: insert k-mers to hash table
 		stepdat_t *s = (stepdat_t*)in;
-		int i, n = 1<<p->opt->suf;
+		int i, n = 1<<p->param->suf;
 		uint64_t n_ins = 0;
-        kt_for(p->opt->n_thread, worker_for, s, n);
+        kt_for(p->param->n_thread, worker_for, s, n);
 		for (i = 0; i < n; ++i) {
 			n_ins += s->buf[i].n_ins;
 			free(s->buf[i].a);
 		}
-		p->h->tot += n_ins;
+		p->ht->tot += n_ins;
 		free(s->buf);
-		fprintf(stderr, "[M] processed %d sequences; %ld distinct k-mers in the hash table\n", s->n, (long)p->h->tot);
+		fprintf(stderr, "[M] processed %d sequences; %ld distinct k-mers in the hash table\n", s->n, (long)p->ht->tot);
 		free(s);
 	}
 	return 0;
 }
 
-ch_t *count(const char *fn, const copt_t *opt, ch_t *h) {
+multi_hashtable_t *count(const char *fn, const param_t *param, multi_hashtable_t *ht) {
 	pldat_t pl;
 	gzFile fp;
 	if ((fp = gzopen(fn, "r")) == 0) return 0;
-	pl.ks = kseq_init(fp);
-	pl.opt = opt;
-    pl.h = (!h) ? ch_init(opt->k, opt->suf) : h;
+	pl.kseq = kseq_init(fp);
+	pl.param = param;
+    pl.ht = (!ht) ? ch_init(param->k, param->suf) : ht;
 	kt_pipeline(3, worker_pipeline, &pl, 3);
-	kseq_destroy(pl.ks);
+	kseq_destroy(pl.kseq);
 	gzclose(fp);
-	return pl.h;
+	return pl.ht;
 }
 
-ch_t *count_file(const char *fn1, const copt_t *opt, ch_t *h2) {
-	ch_t *h;
-	h = count(fn1, opt, h2); 
-	return h;
+multi_hashtable_t *count_file(const char *fn1, const param_t *param, multi_hashtable_t *h2) {
+	multi_hashtable_t *ht;
+	ht = count(fn1, param, h2); 
+	return ht;
 }
 
 uint32_t count_fasta(char* filelist) {
@@ -354,88 +370,105 @@ uint32_t count_fasta(char* filelist) {
     return num_lines;
 }
 
+void print_kmer_debug(multi_hashtable_t* ht) {
+    int i;
+    uint32_t j;
+	for (i = 0; i < 1<<ht->suf; ++i) {
+	    hashtable_t *g = ht->ht[i].ht;
+        for (j = 0; j < kh_end(g); ++j)
+            if (kh_exist(g, j))
+                printf("[%d] %s\n", i, bits2kmer(kh_key(g, j), ht->k+1));
+    }
+}
+
+
 void output_hist(int argc, char *argv[]){
-	ch_t *h = 0;
+	multi_hashtable_t *ht = 0;
 	int c;
 	int i;
-	copt_t opt;
-	ketopt_t o = KETOPT_INIT;
-	copt_init(&opt);
-	while ((c = ketopt(&o, argc, argv, 1, "k:s:K:t:b:i:", 0)) >= 0) {
-		if (c == 'k') opt.k = atoi(o.arg);
-		else if (c == 's') opt.suf = atoi(o.arg);
-		else if (c == 'K') opt.chunk_size = atoi(o.arg);
-		else if (c == 't') opt.n_thread = atoi(o.arg);
-		else if (c == 'b') opt.canonical = false;
-		else if (c == 'i') opt.filelist = o.arg;
+	param_t param;
+	ketopt_t options = KETOPT_INIT;
+	copt_init(&param);
+	while ((c = ketopt(&options, argc, argv, 1, "k:s:K:t:i:b", 0)) >= 0) {
+		if (c == 'k') param.k = atoi(options.arg);
+		else if (c == 's') param.suf = atoi(options.arg);
+		else if (c == 'K') param.chunk_size = atoi(options.arg);
+		else if (c == 't') param.n_thread = atoi(options.arg);
+		else if (c == 'b') param.canonical = false;
+		else if (c == 'i') param.filelist = options.arg;
 	}
 
-	if (argc - o.ind < 1 && !opt.filelist) {
+	if (argc - options.ind < 1 && !param.filelist) {
 		fprintf(stderr, "Usage: pangrowth hist [options] <in.fa> [in.fa]\n");
 		fprintf(stderr, "Options:\n");
-		fprintf(stderr, "  -k INT     k-mer size [%d]\n", opt.k);
-		fprintf(stderr, "  -t INT     number of worker threads [%d]\n", opt.n_thread);
+		fprintf(stderr, "  -k INT     k-mer size [%d]\n", param.k);
+		fprintf(stderr, "  -t INT     number of worker threads [%d]\n", param.n_thread);
 		fprintf(stderr, "  -i PATH    file containing a list of fasta files on each line\n");
-		fprintf(stderr, "  -b         turn off transformation into canonical [%d]\n", opt.canonical);
-		fprintf(stderr, "  -s INT     suffix size for k-mer [%d]\n", opt.n_thread);
+		fprintf(stderr, "  -b         turn off transformation into canonical [%d]\n", param.canonical);
+		fprintf(stderr, "  -s INT     suffix size for k-mer [%d]\n", param.suf);
 		//fprintf(stderr, "  -K INT     chunk size [100m]\n");
 		return;
 	}
 
-    //if (opt.k == -1) {
+    //if (param.k == -1) {
 	//	fprintf(stderr, "Calculating k\n");
     //}
 
     // Calculate necessary bits
-    if (opt.filelist) {
-        NUM_GENOMES = count_fasta(opt.filelist);
+    if (param.filelist) {
+        NUM_GENOMES = count_fasta(param.filelist);
     } else {
-        NUM_GENOMES = argc - o.ind;
+        NUM_GENOMES = argc - options.ind;
     }
     BITS_GENOME = ceil(log2(NUM_GENOMES+1));
     MASK_COUNT  = ((1 << BITS_GENOME) - 1);
     MASK_GENOME = ((1 << BITS_GENOME) - 1) << (BITS_GENOME);
     TOTAL_BITS  = BITS_GENOME*2;
-    SUF = opt.suf;
+    SUF = param.suf;
 
-    fprintf(stderr, "Number of genomes: %d\n", NUM_GENOMES);
-    fprintf(stderr, "Number of bits per genome: %d\n", BITS_GENOME);
-    fprintf(stderr, "Suffix size for k-mer: %d\n", SUF);
-    if (opt.filelist) {
+    fprintf(stderr, "Number of genomes:\t%d\n", NUM_GENOMES);
+    fprintf(stderr, "Number of threads:\t%d\n", param.n_thread);
+    fprintf(stderr, "Bits per genome:\t%d\n", BITS_GENOME);
+    fprintf(stderr, "Bits per suffix:\t%d\n", SUF);
+    fprintf(stderr, "Counting %s k-mers\n", param.canonical ? "canonical" : "forward");
+
+    if (param.filelist) {
         FILE * fp;
         char * line = NULL;
         size_t len = 0;
 
-        fp = fopen(opt.filelist, "r");
+        fp = fopen(param.filelist, "r");
         if (fp == NULL) {
-            fprintf(stderr, "Could not open file: %s",opt.filelist);
+            fprintf(stderr, "Could not open file: %s",param.filelist);
             exit(EXIT_FAILURE);
         }
 
         while ((getline(&line, &len, fp)) != -1) {
             chomp(line);
-            if (h) {
+            if (ht) {
                 ID_GENOME++;
-                h = count_file(line, &opt, h);
+                ht = count_file(line, &param, ht);
             } else {
-                h = count_file(line, &opt, 0);
+                ht = count_file(line, &param, 0);
             }
         }
         fclose(fp);
         if (line) free(line);
     } else {
-        h = count_file(argv[o.ind], &opt, 0);
+        ht = count_file(argv[options.ind], &param, 0);
         for (i = 1; i < NUM_GENOMES; i++){
             ID_GENOME++;
-            h = count_file(argv[o.ind+i], &opt, h);
+            ht = count_file(argv[options.ind+i], &param, ht);
         }
     }
-	fprintf(stderr, "[M::%s] %ld distinct k-mers\n", __func__, (long)h->tot);
+	fprintf(stderr, "[M::%s] %ld distinct k-mers\n", __func__, (long)ht->tot);
 
 	int64_t cnt[N_COUNTS];
 
-	ch_hist(h, cnt, opt.n_thread);
+	//print_kmer_debug(ht);
+
+	hist(ht, cnt, param.n_thread);
 	//for (i = 1; i <= NUM_GENOMES; ++i) printf("%d\t%lld\n", i,(long long)cnt[i]);
 	for (i = 1; i <= NUM_GENOMES; ++i) printf("%lld\n", (long long)cnt[i]);
-	ch_destroy(h);
+	ch_destroy(ht);
 }
