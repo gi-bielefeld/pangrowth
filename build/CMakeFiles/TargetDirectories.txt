@@ -1,3 +1,0 @@
-/home/luca/Work/PhD/soft/pangrowth/build/CMakeFiles/pangrowth.dir
-/home/luca/Work/PhD/soft/pangrowth/build/CMakeFiles/edit_cache.dir
-/home/luca/Work/PhD/soft/pangrowth/build/CMakeFiles/rebuild_cache.dir

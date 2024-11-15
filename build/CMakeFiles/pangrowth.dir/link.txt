@@ -1,1 +1,0 @@
-/usr/bin/c++ -Wall -Wextra -O3 CMakeFiles/pangrowth.dir/src/kthread.c.o CMakeFiles/pangrowth.dir/src/pangrowth.cpp.o -o pangrowth  /usr/local/lib/librmath.a -lz -lm -lpthread 

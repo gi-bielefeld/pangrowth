@@ -46,13 +46,13 @@ char* bits2kmer(uint64_t kmer_bits, int k) {
 }
 
 static inline uint64_t hash64(uint64_t key, uint64_t mask) { // invertible integer hash function
-	key = (~key + (key << 21)) & mask; // key = (key << 21) - key - 1;
-	key = key ^ key >> 24;
-	key = ((key + (key << 3)) + (key << 8)) & mask; // key * 265
-	key = key ^ key >> 14;
-	key = ((key + (key << 2)) + (key << 4)) & mask; // key * 21
-	key = key ^ key >> 28;
-	key = (key + (key << 31)) & mask;
+	//key = (~key + (key << 21)) & mask; // key = (key << 21) - key - 1;
+	//key = key ^ key >> 24;
+	//key = ((key + (key << 3)) + (key << 8)) & mask; // key * 265
+	//key = key ^ key >> 14;
+	//key = ((key + (key << 2)) + (key << 4)) & mask; // key * 21
+	//key = key ^ key >> 28;
+	//key = (key + (key << 31)) & mask;
 	return key;
 }
 

@@ -245,7 +245,7 @@ static void *worker_pipe_infix(void *data, int step, void *in) { // callback for
 		}
 		p->ht->tot += n_ins;
 		free(s->buf);
-		fprintf(stderr, "[M] processed %d sequences; %ld distinct k-mers in the hash table\n", s->n, (long)p->ht->tot);
+        fprintf(stderr, "[M] processed %d sequences; %ld distinct %d-mers in the hash table\n", s->n, (long)p->ht->tot, p->param->k-1);
 		free(s);
 	}
 	return 0;
@@ -290,7 +290,9 @@ static void worker_infix_hist(void *data, long i, int tid) { // callback for kt_
             //uint64_t infix = kh_key(g,i);
             for (int e = 0; e < 16; e++) {
                 if(kh_val(g,i).edges[e]) {
-                    uint64_t idx = ((uint64_t)(kh_val(g,i).sigma)* (uint64_t)(kh_val(g,i).sigma-1))/2 + (uint64_t)(kh_val(g,i).edges[e])-1;
+                    uint64_t sigma = (uint64_t)(kh_val(g,i).sigma);
+                    uint64_t edge = (uint64_t)(kh_val(g,i).edges[e]);
+                    uint64_t idx = (sigma* (sigma-1))/2 + edge -1;
                     cnt[idx]++;
                 }
             }
