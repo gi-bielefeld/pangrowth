@@ -12,8 +12,6 @@
 
 using namespace std;
 
-#define ll unsigned long long
-
 double choose_log(uint32_t n, uint32_t k) {
     double res = 0.0;
     if (k > n) {
@@ -38,10 +36,10 @@ void split(const string &s, char delim, vector<string> &elems) {
 }
 
 void read_panmatrix(const char* file, double* h, int n){
-    fprintf(stderr,"Reading panmatrix...");
+    cerr << "Reading panmatrix..." << flush ;
     ifstream fin(file);
     if (!fin.is_open()) {
-        cout << "Error opening file: " << file << '\n';
+        cerr << "Error opening file: " << file << '\n';
         exit(EXIT_FAILURE);
     }
 
@@ -58,14 +56,14 @@ void read_panmatrix(const char* file, double* h, int n){
         }
         h[sum]++;
     }
-    fprintf(stderr,"ok\n");
+    cerr << "ok" << '\n';
 }
 
-void read_hist(const char* file, double* h, int n){
-    fprintf(stderr,"Reading histogram...");
+void read_hist(const char* file, double* h){
+    cerr << "Reading histogram..." << flush ;
     ifstream fin(file);
     if (!fin.is_open()) {
-        cout << "Error opening file: " << file << '\n';
+        cerr << "Error opening file: " << file << '\n';
         exit(EXIT_FAILURE);
     }
 
@@ -80,7 +78,7 @@ void read_hist(const char* file, double* h, int n){
         h[i++] = val;
         ss.clear();
     }
-    fprintf(stderr,"ok\n");
+    cerr << "ok" << '\n';
 }
 
 void get_pangenome_size(double* h, uint32_t n){
@@ -98,10 +96,10 @@ void get_pangenome_size(double* h, uint32_t n){
             F[i] += log((double)n-(double)m-(double)i+1);
             y += exp(log(h[i]) + F[i] - n_fall_m);
         }
-        if (m > 1) printf(" ");
-        printf("%.2f",tot - y);
+        //if (m > 1) printf(" ");
+        printf("%d %.2f\n",m, tot - y);
     }
-    cout <<  '\n' << flush;
+    //printf("\n");
 }
 
 void get_pangenome_core(double* h, uint32_t n){
@@ -117,10 +115,10 @@ void get_pangenome_core(double* h, uint32_t n){
             F[i] += (log((double)i-(double)m+1));
             y += exp(log(h[i]) + F[i] - n_fall_m);
         }
-        if (m > 1) printf(" ");
-        printf("%.2f",y);
+        //if (m > 1) printf(" ");
+        printf("%d %.2f\n", m, y);
     }
-    cout <<  '\n' << flush;
+    //printf("\n");
 }
 
 void get_pangenome_corequ(double* h, uint32_t n, double qu){
@@ -161,10 +159,10 @@ void get_pangenome_corequ(double* h, uint32_t n, double qu){
                 yr += exp(log(h[i]) + log(sum_q));
             }
         }
-        if (m > 1) printf(" ");
-        printf("%.2f", yl+yr);
+        //if (m > 1) printf(" ");
+        printf("%d %.2f\n", m, yl+yr);
     }
-    printf("\n");
+    //printf("\n");
 }
 
 int get_n_hist(const char* file){
@@ -234,7 +232,7 @@ void output_pangenome(int argc, char *argv[]){
     if (hist) {
         n = get_n_hist(input.c_str());
         h = new double[n+1]();
-        read_hist(input.c_str(), h, n);
+        read_hist(input.c_str(), h);
     }
     if (panmatrix) {
         n = get_n_panmatrix(input.c_str());
@@ -284,7 +282,7 @@ void output_core(int argc, char *argv[]){
     if (hist) {
         n = get_n_hist(input.c_str());
         h = new double[n+1]();
-        read_hist(input.c_str(), h, n);
+        read_hist(input.c_str(), h);
     }
     if (panmatrix) {
         n = get_n_panmatrix(input.c_str());

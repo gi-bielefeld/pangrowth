@@ -12,5 +12,5 @@ endif
 
 .PHONY:all clean
 
-pangrowth: $(SRC)/pangrowth.cpp $(SRC)/size_pangenome.h $(SRC)/khashl.h $(SRC)/ketopt.h $(SRC)/kseq.h $(SRC)/kthread.h $(SRC)/yak-hist.h
-	$(CC) $(CFLAGS) -o $@ $(SRC)/pangrowth.cpp $(SRC)/kthread.c $(SRC)/size_pangenome.h $(SRC)/yak-hist.h $(LIBS)
+pangrowth: $(SRC)/pangrowth.cpp $(SRC)/size_pangenome.h $(SRC)/khashl.h $(SRC)/ketopt.h $(SRC)/kseq.h $(SRC)/kthread.h $(SRC)/yak-hist.h $(SRC)/yak-infix.h
+	$(CC) $(CFLAGS) -o $@ $(SRC)/pangrowth.cpp $(SRC)/kthread.c $(SRC)/size_pangenome.h $(SRC)/yak-hist.h $(SRC)/yak-infix.h $(LIBS)
