@@ -13,4 +13,5 @@
 **/.snakemake
 **/plots
 **/.cache
+**/build
 benchmark
