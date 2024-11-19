@@ -34,7 +34,7 @@ int main(int argc, char** argv) {
     } else if(strcmp(argv[1], "growth") == 0) { 
         output_pangenome(argc-1, argv+sizeof(char));
     } else if(strcmp(argv[1], "hill") == 0) { 
-        printf("TODO\n");
+        output_hill(argc-1, argv+sizeof(char));
     } else if(strcmp(argv[1], "hill_cdbg") == 0) { 
         output_hill_cdbg(argc-1, argv+sizeof(char));
     } else if(strcmp(argv[1], "core") == 0) { 
