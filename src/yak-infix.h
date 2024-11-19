@@ -101,7 +101,6 @@ int hat_insert_infix(multi_hat_infix_s *ht, int n, const uint64_t *a) {
 	return n_ins;
 }
 
-
 /*** count infixes ***/
 typedef struct {
 	int n, m;
@@ -292,7 +291,7 @@ static void worker_infix_hist(void *data, long i, int tid) { // callback for kt_
                 if(kh_val(g,i).edges[e]) {
                     uint64_t sigma = (uint64_t)(kh_val(g,i).sigma);
                     uint64_t edge = (uint64_t)(kh_val(g,i).edges[e]);
-                    uint64_t idx = (sigma* (sigma-1))/2 + edge -1;
+                    uint64_t idx = (sigma * (sigma-1))/2 + edge - 1;
                     cnt[idx]++;
                 }
             }
