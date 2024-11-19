@@ -103,10 +103,10 @@ double static inline
 est_h_extra(vector<double> &h, int i, int n, int x) {
     double tot = 0;
     double p_j;
-    for (int j = max(0,i-x); j <= min(i,n); j++) {
+    for (int j = max(1,i-x); j <= min(i,n); j++) {
         if (h[j] == 0) continue;
-        if (j == 0) p_j = 1.0/(double)(n+x);
-        else p_j = (double)j/(double)n;
+        //if (j == 0) p_j = 1.0/(double)(n+x);
+        p_j = (double)j/(double)n;
         if (p_j < EPSILON) break;
         tot += ((double)h[j])*exp(lchoose(x,i-j) + (i-j)*log(p_j) + (x-i+j)*log(1-p_j));
     }
@@ -170,18 +170,20 @@ hill_cdbg(vector<double> &h_kmer, vector<double> &h_infix_eq, vector<int> &point
     // Unseen k-mers
     double Q1 = h_kmer[1];
     double Q2 = h_kmer[2];
+    double Q0hat;
     if (Q2 == 0) {
-        h_kmer[0] = ((n - 1)/n) * Q1*(Q1 - 1)/2;
+        Q0hat = ((n - 1)/n) * Q1*(Q1 - 1)/2;
     } else {
-        h_kmer[0] = ((n - 1)/n) * Q1*Q1/(2*Q2);
+        Q0hat = ((n - 1)/n) * Q1*Q1/(2*Q2);
     }
     // Unseen uni-mers
-    double Q1_infix = h_infix_eq[1];
-    double Q2_infix = h_infix_eq[3];
-    if (Q2_infix == 0) {
-        h_unimer[0] = ((n - 1)/n) * Q1_infix*(Q1_infix - 1)/2;
+    double Q1_unimer = h_infix_eq[1];
+    double Q2_unimer = h_infix_eq[3];
+    double Q0hat_unimer;
+    if (Q2_unimer == 0) {
+        Q0hat_unimer = ((n - 1)/n) * Q1_unimer*(Q1_unimer - 1)/2;
     } else {
-        h_unimer[0] = ((n - 1)/n) * Q1_infix*Q1_infix/(2*Q2_infix);
+        Q0hat_unimer = ((n - 1)/n) * Q1_unimer*Q1_unimer/(2*Q2_unimer);
     }
     // Broken uni-mers
     double Q_unimer = 0;
@@ -200,6 +202,8 @@ hill_cdbg(vector<double> &h_kmer, vector<double> &h_infix_eq, vector<int> &point
         for (int i = 1; i < m; i++) {
             h_hat_unitig[i] = est_h_extra(h_kmer, i, n, x) - est_h_unimer_extra(h_unimer, pi_broken, i, n, x);
         }
+        h_hat_unitig[1] += Q0hat * (1 - pow(1 - Q1/(Q1+n*Q0hat), x));
+        h_hat_unitig[1] -= Q0hat_unimer * (1 - pow(1 - Q1_unimer/(Q1_unimer+n*Q0hat_unimer), x));
         h_hat_unitig[m] = h_kmer[n] - h_unimer[n];
 
         printf("ext\t%d\t", m);
@@ -239,10 +243,11 @@ hill(vector<double> &h_kmer, vector<int> &points) {
     // Unseen k-mers
     double Q1 = h_kmer[1];
     double Q2 = h_kmer[2];
+    double Q0hat;
     if (Q2 == 0) {
-        h_kmer[0] = ((n - 1)/n) * Q1*(Q1 - 1)/2;
+        Q0hat = ((n - 1)/n) * Q1*(Q1 - 1)/2;
     } else {
-        h_kmer[0] = ((n - 1)/n) * Q1*Q1/(2*Q2);
+        Q0hat = ((n - 1)/n) * Q1*Q1/(2*Q2);
     }
 
     while (p < points.size()) {
@@ -252,6 +257,7 @@ hill(vector<double> &h_kmer, vector<int> &points) {
         for (int i = 1; i < m; i++) {
             h_hat_kmer[i] = est_h_extra(h_kmer, i, n, x);
         }
+        h_hat_kmer[1] += Q0hat * (1 - pow(1 - Q1/(Q1+n*Q0hat), x));
         h_hat_kmer[m] = h_kmer[n];
 
         printf("ext\t%d\t", m);
