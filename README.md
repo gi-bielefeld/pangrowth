@@ -32,7 +32,9 @@ Parmigiani, L., Wittler, R., Stoye, J.,: [Revisiting pangenome openness with _k_
 
 ```bash
 git clone https://github.com/gi-bielefeld/pangrowth
-cd pangrowth
+mkdir build
+cd build
+cmake ..
 make 
 ```
 
