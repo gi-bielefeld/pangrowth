@@ -290,7 +290,7 @@ void output_hill(int argc, char *argv[]) {
     int n_points = 40;
 
     if (argc < 2) {
-        fprintf(stderr, "Usage: pangrowth hill_cdbg <hist_kmer> <hist_infix> \n");
+        fprintf(stderr, "Usage: pangrowth hill_cdbg <hist_kmer>\n");
         return;
     }
 
