@@ -1,5 +1,9 @@
 # Pangrowth
 
+<p align="center">
+    <img src="png/logo.png" width="512" alt="logo_pangrowth">
+</p>
+
 `pangrowth` is an efficient tool designed for genomic researchers to predict the [openness of a pangenome](https://doi.org/10.1101/2022.11.15.516472 ) and
 estimate the **core** genome size. This tool is capable of analyzing fasta
 sequences using **_k_-mers**, as well as other genomic elements such as genes, CDS,
