@@ -97,7 +97,7 @@ void get_pangenome_size(double* h, uint64_t n){
             y += exp(log(h[i]) + F[i] - n_fall_m);
         }
         //if (m > 1) printf(" ");
-        printf("%d %.2f\n",m, tot - y);
+        printf("%ld %.2f\n",m, tot - y);
     }
     //printf("\n");
 }
@@ -116,7 +116,7 @@ void get_pangenome_core(double* h, uint64_t n){
             y += exp(log(h[i]) + F[i] - n_fall_m);
         }
         //if (m > 1) printf(" ");
-        printf("%d %.2f\n", m, y);
+        printf("%ld %.2f\n", m, y);
     }
     //printf("\n");
 }
@@ -160,7 +160,7 @@ void get_pangenome_corequ(double* h, uint64_t n, double qu){
             }
         }
         //if (m > 1) printf(" ");
-        printf("%d %.2f\n", m, yl+yr);
+        printf("%ld %.2f\n", m, yl+yr);
     }
     //printf("\n");
 }
