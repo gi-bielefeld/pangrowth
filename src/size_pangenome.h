@@ -12,14 +12,14 @@
 
 using namespace std;
 
-double choose_log(uint32_t n, uint32_t k) {
+double choose_log(uint64_t n, uint64_t k) {
     double res = 0.0;
     if (k > n) {
         return 0.0;
     }
 
     k = ((k > n - k) ? n - k : k);
-    for (uint32_t i = 0; i < k; i++) {
+    for (uint64_t i = 0; i < k; i++) {
         res += log(n-i);
         res -= log(i+1);
     }
@@ -35,7 +35,7 @@ void split(const string &s, char delim, vector<string> &elems) {
     }
 }
 
-void read_panmatrix(const char* file, double* h, int n){
+void read_panmatrix(const char* file, double* h, uint64_t n){
     cerr << "Reading panmatrix..." << flush ;
     ifstream fin(file);
     if (!fin.is_open()) {
@@ -50,8 +50,8 @@ void read_panmatrix(const char* file, double* h, int n){
         vector<string> line_split;
         split(line, separator, line_split);
 
-        int sum = 0;
-        for (int i = 0; i < n; i++) {
+        uint64_t sum = 0;
+        for (uint64_t i = 0; i < n; i++) {
             sum += stoi(line_split[i]);
         }
         h[sum]++;
@@ -70,9 +70,9 @@ void read_hist(const char* file, double* h){
     string line;
     stringstream ss; 
 
-    int i = 1;
+    uint64_t i = 1;
     while (getline(fin, line, '\n')) {
-        int val;
+        uint64_t val;
         ss.str(line);
         ss >> val;
         h[i++] = val;
@@ -81,18 +81,18 @@ void read_hist(const char* file, double* h){
     cerr << "ok" << '\n';
 }
 
-void get_pangenome_size(double* h, uint32_t n){
+void get_pangenome_size(double* h, uint64_t n){
     double tot = 0;
     double n_fall_m = 0;
-    for (uint32_t i = 0; i < n+1; i++) tot += h[i];
+    for (uint64_t i = 0; i < n+1; i++) tot += h[i];
 
     double* F = new double[n+1];
-    for (uint32_t i = 0; i < n+1; i++) F[i] = 0;
+    for (uint64_t i = 0; i < n+1; i++) F[i] = 0;
 
-    for (uint32_t m = 1; m <= n; m++) {
+    for (uint64_t m = 1; m <= n; m++) {
         double y = 0;
         n_fall_m += log(n-m+1);
-        for (uint32_t i = 1; i <= n-m; i++) {
+        for (uint64_t i = 1; i <= n-m; i++) {
             F[i] += log((double)n-(double)m-(double)i+1);
             y += exp(log(h[i]) + F[i] - n_fall_m);
         }
@@ -102,16 +102,16 @@ void get_pangenome_size(double* h, uint32_t n){
     //printf("\n");
 }
 
-void get_pangenome_core(double* h, uint32_t n){
+void get_pangenome_core(double* h, uint64_t n){
     double n_fall_m = 0;
 
     double* F = new double[n+1];
-    for (uint32_t i = 0; i < n+1; i++) F[i] = 0;
+    for (uint64_t i = 0; i < n+1; i++) F[i] = 0;
 
-    for (uint32_t m = 1; m <= n; m++) {
+    for (uint64_t m = 1; m <= n; m++) {
         double y = 0;
         n_fall_m += log(n-m+1);
-        for (uint32_t i = m; i <= n; i++) {
+        for (uint64_t i = m; i <= n; i++) {
             F[i] += (log((double)i-(double)m+1));
             y += exp(log(h[i]) + F[i] - n_fall_m);
         }
@@ -121,20 +121,20 @@ void get_pangenome_core(double* h, uint32_t n){
     //printf("\n");
 }
 
-void get_pangenome_corequ(double* h, uint32_t n, double qu){
+void get_pangenome_corequ(double* h, uint64_t n, double qu){
     double n_fall_m = 0.0;
     double m_fact = 0.0;
 
     double* F = new double[n+1]();
     double** q = new double*[n+1];
-    for (uint32_t i = 0; i < n+1; i++) q[i] = new double[n+1]();
+    for (uint64_t i = 0; i < n+1; i++) q[i] = new double[n+1]();
 
-    for (uint32_t m = 1; m <= n; m++) {
+    for (uint64_t m = 1; m <= n; m++) {
         m_fact += log(m);
         //items present in all genomes
         double yl = 0.0;
         n_fall_m += log(n-m+1);
-        for (uint32_t i = ceil(m*qu); i <= n; i++) {
+        for (uint64_t i = ceil(m*qu); i <= n; i++) {
             F[i] += log(i-m+1);
             yl += exp(log(h[i]) + F[i] - n_fall_m);
         }
@@ -142,10 +142,10 @@ void get_pangenome_corequ(double* h, uint32_t n, double qu){
         //items present in exactly qu*n genomes 
         double yr = 0.0;
         //std::cout << "m:" << m << '\n' << std::flush;
-        for (uint32_t i = ceil(m*qu); i <= n; i++) {
+        for (uint64_t i = ceil(m*qu); i <= n; i++) {
             double sum_q = 0.0;
             bool add = false;
-            for (uint32_t j = ceil(m*qu); j <= m-1; j++) {
+            for (uint64_t j = ceil(m*qu); j <= m-1; j++) {
                 if (n + j + 1 > i + m && j <= i) {
                     if (q[i][j] == 0.0) {
                         q[i][j] = choose_log(i,j);
@@ -165,17 +165,17 @@ void get_pangenome_corequ(double* h, uint32_t n, double qu){
     //printf("\n");
 }
 
-int get_n_hist(const char* file){
+uint64_t get_n_hist(const char* file){
     ifstream fin(file);
     string line;             // line == ""
-    uint32_t n = 0;
+    uint64_t n = 0;
     while (getline(fin, line, '\n')) {
         n++;  
     }
     return n;
 }
 
-int get_n_panmatrix(const char* file){
+uint64_t get_n_panmatrix(const char* file){
     ifstream fin(file);
     if (!fin.is_open()) {
         cout << "Error opening file: " << file << '\n';
@@ -203,7 +203,7 @@ void print_info() {
 }
 
 void output_pangenome(int argc, char *argv[]){
-    uint32_t n=0;
+    uint64_t n=0;
     double* h = 0;
     string input;
     bool panmatrix = false;
@@ -245,7 +245,7 @@ void output_pangenome(int argc, char *argv[]){
 }
 
 void output_core(int argc, char *argv[]){
-    uint32_t n=0;
+    uint64_t n=0;
     double* h = 0;
     double quorum = 1.0;
     string input;
