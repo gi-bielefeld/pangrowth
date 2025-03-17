@@ -191,6 +191,14 @@ uint64_t get_n_panmatrix(const char* file){
     return line_split.size();
 }
 
+double sum(double* h, uint64_t n) {
+    double tot = 0;
+    for (uint64_t i = 0; i < n; i++) {
+        tot += h[i];
+    }
+    return tot;
+}
+
 void print_info() {
     fprintf(stderr, "Usage: pangrowth core [-q] <-h|-p> <input> \n");
     fprintf(stderr, "Options:\n");
@@ -232,13 +240,17 @@ void output_pangenome(int argc, char *argv[]){
     if (hist) {
         n = get_n_hist(input.c_str());
         h = new double[n+1]();
+        fprintf(stderr, "%ld genomes", n);
         read_hist(input.c_str(), h);
     }
     if (panmatrix) {
         n = get_n_panmatrix(input.c_str());
         h = new double[n+1]();
+        fprintf(stderr, "%ld genomes", n);
         read_panmatrix(input.c_str(), h, n);
     }
+    double tot = sum(h, n);
+    fprintf(stderr, "%ld items", tot);
 
     get_pangenome_size(h, n); 
 
