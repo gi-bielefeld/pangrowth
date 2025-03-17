@@ -250,7 +250,7 @@ void output_pangenome(int argc, char *argv[]){
         read_panmatrix(input.c_str(), h, n);
     }
     double tot = sum(h, n);
-    fprintf(stderr, "%ld items", tot);
+    fprintf(stderr, "%f items", tot);
 
     get_pangenome_size(h, n); 
 
