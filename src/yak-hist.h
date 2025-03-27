@@ -1,4 +1,6 @@
 //https://github.com/lh3/kmer-cnt
+#ifndef kmer_hash_H
+#define kmer_hash_H
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -15,9 +17,11 @@
 
 ///*** hash table kmer ***/
 //#define MAX_KMER     31
+
 #define ch_eq(a, b) ((a)>>SUF == (b)>>SUF) // lower 8 bits for counts; higher bits for k-mer
 #define ch_hash(a) ((a)>>SUF)
 KHASHL_MAP_INIT(, hashtable_kmer_t, ht, uint64_t, int32_t, ch_hash, ch_eq)
+
 
 typedef struct {
 	hashtable_kmer_t *h;
@@ -66,7 +70,6 @@ int hat_insert_kmers(multi_hat_kmer_s *h, int n, const uint64_t *a) {
 	}
 	return n_ins;
 }
-
 
 typedef struct {
 	int n, m;
@@ -357,3 +360,4 @@ void output_hist_kmer(int argc, char *argv[]){
 	for (i = 1; i <= NUM_GENOMES; ++i) printf("%lld\n", (long long)cnt[i]);
 	ch_destroy(h);
 }
+#endif
