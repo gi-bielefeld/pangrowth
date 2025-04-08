@@ -1,7 +1,9 @@
 #include <iostream>
 #include <vector>
 #include <string>
-#include "Rmath.h"
+#include <cmath>
+#include <omp.h>
+//#include "Rmath.h"
 //cout << lchoose(10,0) << '\n' << flush; // 0
 //cout << lchoose(0,0) << '\n' << flush;  // 0
 //cout << lchoose(0,10) << '\n' << flush; // -inf
@@ -77,13 +79,53 @@ inv_gini_simpson(int m, vector<double> &h){
     return 1/gini_simpson;
 }
 
+constexpr double static inline 
+lchoose(int n, int k) {
+    if (k > n) return 0;  
+    if (k == 0 || k == n) return 0;
+    return lgamma(n + 1) - lgamma(k + 1) - lgamma(n - k + 1);
+}
+
 double static inline 
-est_h(vector<double> &h,int i,int n, int m) {
+est_h(std::vector<double>& h, int i, int n, int m, double lchoose_nm) {
     double tot = 0;
-    for (int j = i; j <= n-m+i; j++) {
-        tot += exp(log((double)h[j]) + lchoose(j,i) + lchoose(n-j,m-i) - lchoose(n,m));
+
+    for (int j = i; j <= n - m + i; j++) {
+        double log_hj = log(h[j]);
+        double term = exp(log_hj + lchoose(j, i) + lchoose(n - j, m - i) - lchoose_nm);
+        tot += term;
     }
+
     return tot;
+}
+
+void static inline 
+est_h_hill(std::vector<double>& h, int n, int m, double lchoose_nm, std::vector<double>& h_hat_kmer) {
+    std::vector<double> log_h(n+1);
+    for (int i = 1; i <= n; ++i) log_h[i] = log(h[i]);
+
+    double lfact_i = 0;
+    for (int i = 1; i <= m; i++) {
+        fprintf(stderr,"%d\n",i);
+        h_hat_kmer[i] = 0;
+        //double lfact_i = lgamma(i + 1);
+        double lfact_m_i = lgamma(m - i + 1);
+        //lgamma(n + 1) - lgamma(k + 1) - lgamma(n - k + 1);
+        double lfact_j = lfact_i;
+        double lfact_j_i = 0;
+        for (int j = i; j <= n - m + i; j++) {
+            double lchoose_j_i = lfact_j - lfact_i - lfact_j_i;
+
+            double lfact_n_j = lgamma(n - j + 1);
+            double lfact_n_j_m_i = lgamma(n - j - m + i + 1);
+            double lchoose_n_j_m_i = lfact_n_j - lfact_m_i - lfact_n_j_m_i;
+
+            h_hat_kmer[i] += exp(log_h[j] + lchoose_j_i + lchoose_n_j_m_i - lchoose_nm);
+            lfact_j += log(j+1);
+            lfact_j_i += log(j-i+1);
+        }
+        lfact_i += log(i+1);
+    }
 }
 
 double static inline 
@@ -134,6 +176,7 @@ print_hill(int m, vector<double> &h) {
     printf("%.2f\t", exp_entropy(m, h));
     fflush(stdout);
     printf("%.2f\n", inv_gini_simpson(m, h));
+    fflush(stdout);
 }
 
 void 
@@ -141,6 +184,10 @@ hill_cdbg(vector<double> &h_kmer, vector<double> &h_infix_eq, vector<int> &point
     double n = h_kmer.size()-1;
     int m = points[points.size()-1];
     size_t p = 0;
+    double sum_h = 0;
+    for (int i = 1; i <= n; ++i) {
+        sum_h += h_kmer[i];
+    }
     //1-based index
     vector<double> h_hat_unitig(m+1);
     vector<double> h_unimer(n+1);
@@ -151,8 +198,9 @@ hill_cdbg(vector<double> &h_kmer, vector<double> &h_infix_eq, vector<int> &point
     while (points[p] < n) {
         int m = points[p++];
         
+        double lchoose_nm = lchoose(n, m);
         for (int i = 1; i <= m; i++) {
-            h_hat_unitig[i] = est_h(h_kmer, i, n, m) - est_h_unimer(h_infix_eq, i, n, m);
+            h_hat_unitig[i] = est_h(h_kmer, i, n, m, lchoose_nm) - est_h_unimer(h_infix_eq, i, n, m);
         }
         printf("int\t%d\t", m);
         print_hill(m, h_hat_unitig);
@@ -216,6 +264,10 @@ hill(vector<double> &h_kmer, vector<int> &points) {
     double n = h_kmer.size()-1;
     int m = points[points.size()-1];
     size_t p = 0;
+    double sum_h = 0;
+    for (int i = 1; i <= n; ++i) {
+        sum_h += h_kmer[i];
+    }
     //1-based index
     vector<double> h_hat_kmer(m+1);
 
@@ -224,9 +276,8 @@ hill(vector<double> &h_kmer, vector<int> &points) {
     while (points[p] < n) {
         int m = points[p++];
         
-        for (int i = 1; i <= m; i++) {
-            h_hat_kmer[i] = est_h(h_kmer, i, n, m);
-        }
+        double lchoose_nm = lchoose(n, m);
+        est_h_hill(h_kmer, n, m, lchoose_nm, h_hat_kmer);
         printf("int\t%d\t", m);
         print_hill(m, h_hat_kmer);
     }
@@ -269,7 +320,7 @@ void output_hill_cdbg(int argc, char *argv[]) {
     vector<double> h_kmer {0}, h_infix_eq{0}; //1-based index
     vector<int> points;
     //points = {1, 6, 11, 16, 21, 26, 31, 36, 41, 46, 52, 57, 62, 67, 72, 77, 82, 87, 92, 97, 100};
-    int n_points = 40;
+    int n_points = 30;
 
     if (argc < 3) {
         fprintf(stderr, "Usage: pangrowth hill_cdbg <hist_kmer> <hist_infix> \n");
@@ -287,10 +338,10 @@ void output_hill(int argc, char *argv[]) {
     vector<double> h_kmer {0}; //1-based index
     vector<int> points;
     //points = {1, 6, 11, 16, 21, 26, 31, 36, 41, 46, 52, 57, 62, 67, 72, 77, 82, 87, 92, 97, 100};
-    int n_points = 40;
+    int n_points = 30;
 
     if (argc < 2) {
-        fprintf(stderr, "Usage: pangrowth hill_cdbg <hist_kmer>\n");
+        fprintf(stderr, "Usage: pangrowth hill <hist_kmer>\n");
         return;
     }
 

@@ -16,5 +16,14 @@ file(GLOB SRC_C "src/*.c")
 file(GLOB SRC_CXX "src/*.cpp")
 
 add_executable(pangrowth ${HEAD_C} ${SRC_C} ${HEAD_CXX} ${SRC_CXX})
-find_package(Rmath 1.0.0 REQUIRED)
-target_link_libraries(pangrowth Rmath::Rmath z m pthread)
+
+find_package(OpenMP REQUIRED)
+
+if(OpenMP_CXX_FOUND)
+  message(STATUS "OpenMP found: ${OpenMP_CXX_VERSION}")
+  target_link_libraries(pangrowth OpenMP::OpenMP_CXX)
+endif()
+
+#find_package(Rmath 1.0.0 REQUIRED)
+#target_link_libraries(pangrowth Rmath::Rmath z m pthread)
+target_link_libraries(pangrowth z m pthread)
