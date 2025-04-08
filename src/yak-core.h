@@ -24,9 +24,9 @@ inline bool is_core(uint64_t kmer, uint64_t abs_quorum, multi_hat_kmer_s *h) {
 
 static inline uint64_t stream_kmer_core(int k, int suf, int len, const char *seq, uint64_t abs_quorum, multi_hat_kmer_s *h){ 
     uint64_t core = 0;
+    uint8_t overlap = 0;
 	uint64_t i, l;
 	uint64_t x[2], mask = (1ULL<<k*2) - 1, shift = (k - 1) * 2;
-    uint64_t first_core = true;
 	for (i = l = 0, x[0] = x[1] = 0; i < len; ++i) {
 		int c = seq_nt4_table[(uint8_t)seq[i]];
 		if (c < 4) { // not an "N" base
@@ -35,14 +35,13 @@ static inline uint64_t stream_kmer_core(int k, int suf, int len, const char *seq
 			if (++l >= k) { // we find a k-mer
 				uint64_t y = x[0] < x[1]? x[0] : x[1];      // Canonicals!
                 if (is_core(y, abs_quorum, h)) {
-                    if(first_core) core += k-1; //if it is the start add a plus k-1
-                    core++;
-                    first_core = false;
+                    core += k - overlap;
+                    overlap = k-1;
                 } else {
-                    first_core = true;
+                    overlap = max(0, overlap-1);
                 }
 			}
-		} else l = 0, x[0] = x[1] = 0, first_core = true; // if there is an "N", restart
+		} else l = 0, x[0] = x[1] = 0, overlap = 0;//, first_core = true; // if there is an "N", restart
 	}
     return core;
 }
@@ -110,11 +109,11 @@ static void *worker_pipe_kmer_core(void *data, int step, void *in) { // callback
 	return 0;
 }
 
-uint64_t count_kmer_core(const char *fn, const param_t *opt, multi_hat_kmer_s *h, double quorum) {
+uint64_t count_kmer_core(const char *fn, const param_t *opt, multi_hat_kmer_s *h, uint64_t abs_quorum) {
 	pldat_kmer_core_s pl;
 	gzFile fp;
     pl.core_count = 0;
-    pl.abs_quorum = std::ceil(NUM_GENOMES*quorum);
+    pl.abs_quorum = abs_quorum;
 	if ((fp = gzopen(fn, "r")) == 0) return 0;
 	pl.ks = kseq_init(fp);
 	pl.opt = opt;
@@ -125,8 +124,8 @@ uint64_t count_kmer_core(const char *fn, const param_t *opt, multi_hat_kmer_s *h
     return pl.core_count;
 }
 
-uint64_t count_kmer_core_file(const char *fn1, const param_t *opt, multi_hat_kmer_s *h, double quorum) {
-	uint64_t core_kmer_count = count_kmer_core(fn1, opt, h, quorum); 
+uint64_t count_kmer_core_file(const char *fn1, const param_t *opt, multi_hat_kmer_s *h, uint64_t abs_quorum) {
+	uint64_t core_kmer_count = count_kmer_core(fn1, opt, h, abs_quorum); 
     printf("%s\t%ld\n", fn1, core_kmer_count);
     return core_kmer_count;
 }
@@ -180,12 +179,13 @@ void output_kmer_core(int argc, char *argv[]){
     TOTAL_BITS  = BITS_GENOME*2;
     SUF = opt.suf;
 
+    uint64_t abs_quorum = std::ceil(((double)NUM_GENOMES)*quorum);
     fprintf(stderr, "Number of genomes:\t%d\n", NUM_GENOMES);
     fprintf(stderr, "Number of threads:\t%d\n", opt.n_thread);
     fprintf(stderr, "Bits per genome:\t%d\n", BITS_GENOME);
     fprintf(stderr, "Bits per suffix:\t%d\n", SUF);
     fprintf(stderr, "Counting %s k-mers\n", opt.canonical ? "canonical" : "forward");
-    fprintf(stderr, "Quorum %0.2f\n", quorum);
+    fprintf(stderr, "Quorum %0.2f [%d/%d]\n", quorum, abs_quorum, NUM_GENOMES);//, NUM_GENOMES);
 
     if (opt.filelist) {
         FILE * fp;
@@ -234,14 +234,14 @@ void output_kmer_core(int argc, char *argv[]){
 
         while ((getline(&line, &len, fp)) != -1) {
             chomp(line);
-            core_count = count_kmer_core_file(line, &opt, h, quorum);
+            core_count = count_kmer_core_file(line, &opt, h, abs_quorum);
             ID_GENOME++;
         }
         fclose(fp);
         if (line) free(line);
     } else {
         for (i = 0; i < NUM_GENOMES; i++){
-            core_count = count_kmer_core_file(argv[o.ind+i], &opt, h, quorum);
+            core_count = count_kmer_core_file(argv[o.ind+i], &opt, h, abs_quorum);
             ID_GENOME++;
         }
     }

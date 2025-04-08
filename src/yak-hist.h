@@ -266,7 +266,8 @@ void print_kmer_debug(multi_hat_kmer_s * ht) {
         hashtable_kmer_t *g = ht->h[i].h;
         for (j = 0; j < kh_end(g); ++j)
             if (kh_exist(g, j))
-                printf("[%d] %s %d\n", i, bits2kmer(kh_key(g, j), ht->k), kh_val(g,j)&MASK_COUNT);
+                printf("%s %d\n", bits2kmer(kh_key(g, j), ht->k), kh_val(g,j)&MASK_COUNT);
+                //printf("[%d] %s %d\n", i, bits2kmer(kh_key(g, j), ht->k), kh_val(g,j)&MASK_COUNT);
     }
 }
 
