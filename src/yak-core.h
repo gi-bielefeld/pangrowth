@@ -15,7 +15,7 @@
 #include "yak-hist.h"
 
 inline bool is_core(uint64_t kmer, uint64_t abs_quorum, multi_hat_kmer_s *h) {
-    int mask = (1<<h->suf) - 1;
+    uint64_t mask = (1<<h->suf) - 1;
 	hat_kmer_s *g = &h->h[kmer&mask];
     khint_t k = ht_get(g->h, kmer);
     //printf("C:%s %d %d \n",bits2kmer(kmer, 11), (kh_val(g->h, k)&MASK_COUNT), ((kh_val(g->h, k)&MASK_COUNT)) >= abs_quorum);
