@@ -113,13 +113,13 @@ inv_gini_simpson(int m, vector<double> &h){
     return 1/gini_simpson;
 }
 
-double static inline 
-lchoose(int n, int k) {
-    if (k < 0 || k > n) return R_NegInf; // log(C(n,k)) where C(n,k)=0
-    if (k == 0 || k == n) return 0.0;    // log(C(n,k)) where C(n,k)=1
-    if (k > n / 2) k = n - k;           // Symmetry: C(n, k) = C(n, n-k)
-    return lgammafn(n + 1.0) - lgammafn(k + 1.0) - lgammafn(n - k + 1.0);
-}
+//double static inline 
+//lchoose(int n, int k) {
+//    if (k < 0 || k > n) return R_NegInf; // log(C(n,k)) where C(n,k)=0
+//    if (k == 0 || k == n) return 0.0;    // log(C(n,k)) where C(n,k)=1
+//    if (k > n / 2) k = n - k;           // Symmetry: C(n, k) = C(n, n-k)
+//    return lgammafn(n + 1.0) - lgammafn(k + 1.0) - lgammafn(n - k + 1.0);
+//}
 
 double static inline 
 est_h(vector<double>& h, int i, int n, int m, double lchoose_nm) {
@@ -372,8 +372,6 @@ void output_hill_cdbg(int argc, char *argv[]) {
     ketopt_t o = KETOPT_INIT;
     int c;
 
-    // argv[0] is the command name (e.g., "hill_cdbg")
-    // The '1' in ketopt means argv[0] is command name, options start from argv[1]
     while ((c = ketopt(&o, argc, argv, 1, "p:", 0)) >= 0) {
         if (c == 'p') {
             num_points = atoi(o.arg);
@@ -382,15 +380,7 @@ void output_hill_cdbg(int argc, char *argv[]) {
                 fprintf(stderr, "Usage: pangrowth %s [-p <num_points>] <hist_kmer> <hist_infix>\n", argv[0]);
                 return;
             }
-        } else if (c == '?') { // Unknown option
-            fprintf(stderr, "Error: unknown option `-%c'.\n", o.optopt);
-            fprintf(stderr, "Usage: pangrowth %s [-p <num_points>] <hist_kmer> <hist_infix>\n", argv[0]);
-            return;
-        } else if (c == ':') { // Missing argument for an option
-            fprintf(stderr, "Error: option `-%c' requires an argument.\n", o.optopt);
-            fprintf(stderr, "Usage: pangrowth %s [-p <num_points>] <hist_kmer> <hist_infix>\n", argv[0]);
-            return;
-        }
+        } 
     }
 
     if (argc - o.ind != 2) {
@@ -410,7 +400,6 @@ void output_hill_cdbg(int argc, char *argv[]) {
 }
 
 void output_hill(int argc, char *argv[]) {
-    //vector<double> h_kmer {0}; //1-based index
     vector<double> h_kmer {0}; //1-based index
     vector<int> points;
     int num_points = 30; // Default
@@ -419,8 +408,6 @@ void output_hill(int argc, char *argv[]) {
     ketopt_t o = KETOPT_INIT;
     int c;
 
-    // argv[0] is the command name (e.g., "hill")
-    // The '1' in ketopt means argv[0] is command name, options start from argv[1]
     while ((c = ketopt(&o, argc, argv, 1, "p:", 0)) >= 0) {
         if (c == 'p') {
             num_points = atoi(o.arg);
@@ -429,14 +416,6 @@ void output_hill(int argc, char *argv[]) {
                 fprintf(stderr, "Usage: pangrowth %s [-p <num_points>] <hist_kmer>\n", argv[0]);
                 return;
             }
-        } else if (c == '?') { // Unknown option
-            fprintf(stderr, "Error: unknown option `-%c'.\n", o.optopt);
-            fprintf(stderr, "Usage: pangrowth %s [-p <num_points>] <hist_kmer>\n", argv[0]);
-            return;
-        } else if (c == ':') { // Missing argument for an option
-            fprintf(stderr, "Error: option `-%c' requires an argument.\n", o.optopt);
-            fprintf(stderr, "Usage: pangrowth %s [-p <num_points>] <hist_kmer>\n", argv[0]);
-            return;
         }
     }
 
