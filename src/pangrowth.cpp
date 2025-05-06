@@ -20,11 +20,13 @@ int main(int argc, char** argv) {
         fprintf(stderr, "       Outputs the pangenome growth graph from the histogram (or panmatrix)\n");
         fprintf(stderr, "  hill:\n");
         fprintf(stderr, "       Outputs Hill's numbers for richness, exp. entropy and inv. gini-simpson index.\n"
-                        "       It takes as input an histogram produced by 'hist'\n");
+                        "       It takes as input an histogram produced by 'hist'.\n"
+                        "       Options: -p <int>  Number of points to sample (default: 30)\n");
         fprintf(stderr, "  hill_cdbg:\n");
         fprintf(stderr, "       Outputs Hill's numbers for richness, exp. entropy and inv. gini-simpson index\n"
                         "       of the respective compacted de Bruijn graph. It takes as input two histograms\n"
-                        "       representing the k-mer hist and the infix equivalents hist respectively\n");
+                        "       representing the k-mer hist and the infix equivalents hist respectively.\n"
+                        "       Options: -p <int>  Number of points to sample (default: 30)\n");
         fprintf(stderr, "  core:\n");
         fprintf(stderr, "       Outputs the pangenome core graph from the histogram (or panmatrix)\n");
         return 0;

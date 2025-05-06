@@ -362,16 +362,43 @@ hill(vector<double> &h_kmer, vector<int> &points) {
 void output_hill_cdbg(int argc, char *argv[]) {
     vector<double> h_kmer{0}, h_infix_eq{0}; //1-based index
     vector<int> points;
-    //points = {1, 6, 11, 16, 21, 26, 31, 36, 41, 46, 52, 57, 62, 67, 72, 77, 82, 87, 92, 97, 100};
-    int num_points = 30;
+    int num_points = 30; // Default
+    char *kmer_hist_filename = nullptr;
+    char *infix_hist_filename = nullptr;
 
-    if (argc < 3) {
-        fprintf(stderr, "Usage: pangrowth hill_cdbg <hist_kmer> <hist_infix> \n");
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "-p") == 0) {
+            if (i + 1 < argc) {
+                num_points = atoi(argv[i+1]);
+                if (num_points <= 0) {
+                    fprintf(stderr, "Error: Number of points for -p must be positive.\n");
+                    fprintf(stderr, "Usage: pangrowth %s [-p <num_points>] <hist_kmer> <hist_infix>\n", argv[0]);
+                    return;
+                }
+                i++; // Consume the value
+            } else {
+                fprintf(stderr, "Error: -p option requires a value.\n");
+                fprintf(stderr, "Usage: pangrowth %s [-p <num_points>] <hist_kmer> <hist_infix>\n", argv[0]);
+                return;
+            }
+        } else if (kmer_hist_filename == nullptr) {
+            kmer_hist_filename = argv[i];
+        } else if (infix_hist_filename == nullptr) {
+            infix_hist_filename = argv[i];
+        } else {
+            fprintf(stderr, "Error: Too many file arguments.\n");
+            fprintf(stderr, "Usage: pangrowth %s [-p <num_points>] <hist_kmer> <hist_infix>\n", argv[0]);
+            return;
+        }
+    }
+
+    if (kmer_hist_filename == nullptr || infix_hist_filename == nullptr) {
+        fprintf(stderr, "Usage: pangrowth %s [-p <num_points>] <hist_kmer> <hist_infix>\n", argv[0]);
         return;
     }
 
-    read_file(argv[1], h_kmer);
-    read_file(argv[2], h_infix_eq);
+    read_file(kmer_hist_filename, h_kmer);
+    read_file(infix_hist_filename, h_infix_eq);
     int n = h_kmer.size()-1;
     num_points = min(3*n,num_points);
     get_points(n, num_points, points);
@@ -382,15 +409,39 @@ void output_hill(int argc, char *argv[]) {
     //vector<double> h_kmer {0}; //1-based index
     vector<double> h_kmer {0}; //1-based index
     vector<int> points;
-    //points = {1, 6, 11, 16, 21, 26, 31, 36, 41, 46, 52, 57, 62, 67, 72, 77, 82, 87, 92, 97, 100};
-    int num_points = 30;
+    int num_points = 30; // Default
+    char *kmer_hist_filename = nullptr;
 
-    if (argc < 2) {
-        fprintf(stderr, "Usage: pangrowth hill <hist_kmer>\n");
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "-p") == 0) {
+            if (i + 1 < argc) {
+                num_points = atoi(argv[i+1]);
+                if (num_points <= 0) {
+                    fprintf(stderr, "Error: Number of points for -p must be positive.\n");
+                    fprintf(stderr, "Usage: pangrowth %s [-p <num_points>] <hist_kmer>\n", argv[0]);
+                    return;
+                }
+                i++; // Consume the value
+            } else {
+                fprintf(stderr, "Error: -p option requires a value.\n");
+                fprintf(stderr, "Usage: pangrowth %s [-p <num_points>] <hist_kmer>\n", argv[0]);
+                return;
+            }
+        } else if (kmer_hist_filename == nullptr) {
+            kmer_hist_filename = argv[i];
+        } else {
+            fprintf(stderr, "Error: Too many file arguments.\n");
+            fprintf(stderr, "Usage: pangrowth %s [-p <num_points>] <hist_kmer>\n", argv[0]);
+            return;
+        }
+    }
+
+    if (kmer_hist_filename == nullptr) {
+        fprintf(stderr, "Usage: pangrowth %s [-p <num_points>] <hist_kmer>\n", argv[0]);
         return;
     }
 
-    read_file(argv[1], h_kmer);
+    read_file(kmer_hist_filename, h_kmer);
     int n = h_kmer.size()-1;
     num_points = min(3*n,num_points);
     get_points(n, num_points, points);
