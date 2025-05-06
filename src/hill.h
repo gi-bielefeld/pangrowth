@@ -13,6 +13,39 @@
 //#define EPSILON numeric_limits<double>::epsilon()
 using namespace std;
 
+// Helper function to parse command line options for hill commands
+// Returns o.ind (index of the first non-option argument) on success.
+// Returns a negative value on error:
+//  -1 for unknown option or missing argument.
+//  -2 for invalid argument to -p.
+// Error messages related to option parsing are printed by this helper.
+static int parse_hill_cli_options(int argc, char *argv[], int *num_points_ptr, const char* cmd_name) {
+    ketopt_t o = KETOPT_INIT;
+    int c;
+    *num_points_ptr = 30; // Default value for number of points
+
+    // argv[0] is the command name (e.g., "hill"), options start from argv[1]
+    while ((c = ketopt(&o, argc, argv, 1, "p:", 0)) >= 0) {
+        if (c == 'p') {
+            *num_points_ptr = atoi(o.arg);
+            if (*num_points_ptr < 0) { // Allow 0 for "all points"
+                fprintf(stderr, "Error: Number of points for -p must be non-negative.\n");
+                fprintf(stderr, "Usage: pangrowth %s [-p <num_points>] ...\n", cmd_name);
+                return -2; // Invalid argument error
+            }
+        } else if (c == '?') { // Unknown option
+            fprintf(stderr, "Error: unknown option `-%c'.\n", o.optopt);
+            fprintf(stderr, "Usage: pangrowth %s [-p <num_points>] ...\n", cmd_name);
+            return -1; // Unknown option error
+        } else if (c == ':') { // Missing argument for an option
+            fprintf(stderr, "Error: option `-%c' requires an argument.\n", o.optopt);
+            fprintf(stderr, "Usage: pangrowth %s [-p <num_points>] ...\n", cmd_name);
+            return -1; // Missing argument error
+        }
+    }
+    return o.ind; // Index of the first non-option argument
+}
+
 void read_file(const char* file, vector<double>& R){
     cerr << "Reading file " << file << ".."<< flush;
     ifstream fin(file);
@@ -34,30 +67,41 @@ void read_file(const char* file, vector<double>& R){
 }
 
 void get_points(int n, int num_points, vector<int> &points) {
-    if (n==1) {
+    points.clear(); // Ensure points vector is empty before filling
+
+    double end_val = 3.0 * n; // Use a distinct name for the double value
+    int int_end_val = static_cast<int>(floor(end_val));
+
+    if (n==1) { // Original check for n=1
         cerr << "WARN: number of genomes needs to be greater than 1\n" << flush;
+        return; // Original behavior: return if n=1, points remains empty.
+    }
+    
+    if (int_end_val <= 0) { // If max point (3*n) is not positive, no points to generate.
         return;
     }
 
+    // If num_points effectively requests all points up to 3*n.
+    // This handles the case where num_points (from CLI via output_hill*) is set to int_end_val for "-p 0"
+    if (num_points >= int_end_val) {
+        points.reserve(int_end_val);
+        for (int i = 1; i <= int_end_val; i++) {
+            points.push_back(i);
+        }
+        // The original warning about size mismatch at the end of this function will reflect this.
+        return; // All points generated
+    }
 
-    double end = 3.0 * n;
-
+    // Original logic for num_points <= 3 (this block is now after the "all points" check)
     if (num_points <= 3) {
         points.push_back(1);
-        points.push_back(n);
-        points.push_back(int(end));
-    }
+        points.push_back(n); 
+        points.push_back(int_end_val); // Use the calculated int_end_val
+    } else { // Original sampling logic for num_points > 3 and < int_end_val
+      points.reserve(num_points);
+      double step = end_val / num_points; // Use end_val (double) for step calculation
 
-    if (num_points > end) {
-        points.reserve(end);
-        for (int i = 1; i <= end; i++) { points[i-1] = i; }
-        return;
-    }
-
-    points.reserve(num_points);
-    double step = end / num_points;
-
-    for (double i = 1.0; i <= end; i+=step) {
+      for (double i = 1.0; i <= end_val; i+=step) {
         points.push_back(int(floor(i)));
     }
 
@@ -368,22 +412,15 @@ void output_hill_cdbg(int argc, char *argv[]) {
     int num_points = 30; // Default
     char *kmer_hist_filename = nullptr;
     char *infix_hist_filename = nullptr;
+    // num_points will be set to default (30) by helper if -p not given, or to parsed value.
 
-    ketopt_t o = KETOPT_INIT;
-    int c;
+    int opt_idx = parse_hill_cli_options(argc, argv, &num_points, argv[0]);
 
-    while ((c = ketopt(&o, argc, argv, 1, "p:", 0)) >= 0) {
-        if (c == 'p') {
-            num_points = atoi(o.arg);
-            if (num_points <= 0) {
-                fprintf(stderr, "Error: Number of points for -p must be positive.\n");
-                fprintf(stderr, "Usage: pangrowth %s [-p <num_points>] <hist_kmer> <hist_infix>\n", argv[0]);
-                return;
-            }
-        } 
+    if (opt_idx < 0) { // Error in parsing options, message already printed by helper.
+        return;       // Specific usage for this command is part of helper's message.
     }
 
-    if (argc - o.ind != 2) {
+    if (argc - opt_idx != 2) {
         fprintf(stderr, "Error: Expected 2 file arguments (k-mer histogram and infix histogram).\n");
         fprintf(stderr, "Usage: pangrowth %s [-p <num_points>] <hist_kmer> <hist_infix>\n", argv[0]);
         return;
@@ -394,32 +431,49 @@ void output_hill_cdbg(int argc, char *argv[]) {
     read_file(kmer_hist_filename, h_kmer);
     read_file(infix_hist_filename, h_infix_eq);
     int n = h_kmer.size()-1;
-    num_points = min(3*n,num_points);
-    get_points(n, num_points, points);
+
+    int final_num_points;
+    if (num_points == 0) { // User specified -p 0, meaning all points up to 3*n
+        final_num_points = (n > 0) ? static_cast<int>(floor(3.0 * n)) : 1; // If n=0, 3*n=0, so 1 point.
+        // Ensure at least 1 point if 3*n was < 1 (e.g. n is very small positive, like 0.1 if n could be double)
+        // Since n is int from h_kmer.size()-1, if n>0, 3*n >= 3. So floor(3.0*n) >=3.
+        // If n=0, final_num_points = 1.
+        // If n is from hist, n >=0. If hist empty, n=-1. If hist has 1 el, n=0.
+        // Let's assume n is number of genomes, so n >= 1 for meaningful analysis.
+        // If n (from hist size) is 0 or less, default to 1 point.
+        if (n <= 0) final_num_points = 1;
+        else final_num_points = static_cast<int>(floor(3.0 * n));
+
+        if (final_num_points <= 0) final_num_points = 1; // Ensure at least 1 point.
+    } else {
+        final_num_points = num_points;
+        if (n > 0) { // Cap user-provided num_points if it's too large, only if n is positive
+            int cap = static_cast<int>(floor(3.0 * n));
+            if (cap <= 0) cap = 1; // Cap must be at least 1
+            final_num_points = min(cap, final_num_points);
+        } else { // if n <= 0
+             final_num_points = 1; // If no genomes, just 1 point.
+        }
+    }
+    if (final_num_points <= 0) final_num_points = 1; // Overall safety: ensure at least 1 point
+
+    get_points(n, final_num_points, points);
     hill_cdbg(h_kmer, h_infix_eq, points);
 }
 
 void output_hill(int argc, char *argv[]) {
     vector<double> h_kmer {0}; //1-based index
     vector<int> points;
-    int num_points = 30; // Default
+    int num_points = 30; // Will be updated by helper, or remains default.
     char *kmer_hist_filename = nullptr;
 
-    ketopt_t o = KETOPT_INIT;
-    int c;
+    int opt_idx = parse_hill_cli_options(argc, argv, &num_points, argv[0]);
 
-    while ((c = ketopt(&o, argc, argv, 1, "p:", 0)) >= 0) {
-        if (c == 'p') {
-            num_points = atoi(o.arg);
-            if (num_points <= 0) {
-                fprintf(stderr, "Error: Number of points for -p must be positive.\n");
-                fprintf(stderr, "Usage: pangrowth %s [-p <num_points>] <hist_kmer>\n", argv[0]);
-                return;
-            }
-        }
+    if (opt_idx < 0) { // Error in parsing options, message already printed by helper.
+        return;       // Specific usage for this command is part of helper's message.
     }
 
-    if (argc - o.ind != 1) {
+    if (argc - opt_idx != 1) {
         fprintf(stderr, "Error: Expected 1 file argument (k-mer histogram).\n");
         fprintf(stderr, "Usage: pangrowth %s [-p <num_points>] <hist_kmer>\n", argv[0]);
         return;
@@ -428,7 +482,25 @@ void output_hill(int argc, char *argv[]) {
 
     read_file(kmer_hist_filename, h_kmer);
     int n = h_kmer.size()-1;
-    num_points = min(3*n,num_points);
-    get_points(n, num_points, points);
+
+    int final_num_points;
+    if (num_points == 0) { // User specified -p 0, meaning all points up to 3*n
+        if (n <= 0) final_num_points = 1; // If no genomes, default to 1 point.
+        else final_num_points = static_cast<int>(floor(3.0 * n));
+
+        if (final_num_points <= 0) final_num_points = 1; // Ensure at least 1 point.
+    } else {
+        final_num_points = num_points;
+        if (n > 0) { // Cap user-provided num_points if it's too large, only if n is positive
+            int cap = static_cast<int>(floor(3.0 * n));
+            if (cap <= 0) cap = 1; // Cap must be at least 1
+            final_num_points = min(cap, final_num_points);
+        } else { // if n <= 0
+            final_num_points = 1; // If no genomes, just 1 point.
+        }
+    }
+    if (final_num_points <= 0) final_num_points = 1; // Overall safety: ensure at least 1 point
+
+    get_points(n, final_num_points, points);
     hill(h_kmer, points);
 }
