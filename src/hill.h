@@ -11,7 +11,7 @@
 using namespace std;
 
 void read_file(const char* file, vector<double>& R){
-    cerr << "Reading file " << file << ".."<< std::flush;
+    cerr << "Reading file " << file << ".."<< flush;
     ifstream fin(file);
     if (!fin.is_open()) {
         cerr << "Error opening file: " << file << '\n';
@@ -27,12 +27,12 @@ void read_file(const char* file, vector<double>& R){
         R.push_back(tmp);
         ss.clear();
     }
-    cerr << "complete\n" << std::flush;
+    cerr << "complete\n" << flush;
 }
 
 void get_points(int n, int num_points, vector<int> &points) {
     if (n==1) {
-        cerr << "WARN: number of genomes needs to be greater than 1\n" << std::flush;
+        cerr << "WARN: number of genomes needs to be greater than 1\n" << flush;
         return;
     }
 
