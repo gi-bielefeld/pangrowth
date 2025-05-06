@@ -4,7 +4,10 @@
 #include <cmath>
 #include <sstream>
 #include <omp.h>
+#include <cstdlib> // For atoi, exit
+#include <cstring> // For strcmp (though parsing part is removed, ketopt might use it)
 #include "Rmath.h"
+#include "ketopt.h"
 
 #define EPSILON 0.00001
 //#define EPSILON numeric_limits<double>::epsilon()
@@ -366,36 +369,37 @@ void output_hill_cdbg(int argc, char *argv[]) {
     char *kmer_hist_filename = nullptr;
     char *infix_hist_filename = nullptr;
 
-    for (int i = 1; i < argc; ++i) {
-        if (strcmp(argv[i], "-p") == 0) {
-            if (i + 1 < argc) {
-                num_points = atoi(argv[i+1]);
-                if (num_points <= 0) {
-                    fprintf(stderr, "Error: Number of points for -p must be positive.\n");
-                    fprintf(stderr, "Usage: pangrowth %s [-p <num_points>] <hist_kmer> <hist_infix>\n", argv[0]);
-                    return;
-                }
-                i++; // Consume the value
-            } else {
-                fprintf(stderr, "Error: -p option requires a value.\n");
+    ketopt_t o = KETOPT_INIT;
+    int c;
+
+    // argv[0] is the command name (e.g., "hill_cdbg")
+    // The '1' in ketopt means argv[0] is command name, options start from argv[1]
+    while ((c = ketopt(&o, argc, argv, 1, "p:", 0)) >= 0) {
+        if (c == 'p') {
+            num_points = atoi(o.arg);
+            if (num_points <= 0) {
+                fprintf(stderr, "Error: Number of points for -p must be positive.\n");
                 fprintf(stderr, "Usage: pangrowth %s [-p <num_points>] <hist_kmer> <hist_infix>\n", argv[0]);
                 return;
             }
-        } else if (kmer_hist_filename == nullptr) {
-            kmer_hist_filename = argv[i];
-        } else if (infix_hist_filename == nullptr) {
-            infix_hist_filename = argv[i];
-        } else {
-            fprintf(stderr, "Error: Too many file arguments.\n");
+        } else if (c == '?') { // Unknown option
+            fprintf(stderr, "Error: unknown option `-%c'.\n", o.optopt);
+            fprintf(stderr, "Usage: pangrowth %s [-p <num_points>] <hist_kmer> <hist_infix>\n", argv[0]);
+            return;
+        } else if (c == ':') { // Missing argument for an option
+            fprintf(stderr, "Error: option `-%c' requires an argument.\n", o.optopt);
             fprintf(stderr, "Usage: pangrowth %s [-p <num_points>] <hist_kmer> <hist_infix>\n", argv[0]);
             return;
         }
     }
 
-    if (kmer_hist_filename == nullptr || infix_hist_filename == nullptr) {
+    if (argc - o.ind != 2) {
+        fprintf(stderr, "Error: Expected 2 file arguments (k-mer histogram and infix histogram).\n");
         fprintf(stderr, "Usage: pangrowth %s [-p <num_points>] <hist_kmer> <hist_infix>\n", argv[0]);
         return;
     }
+    kmer_hist_filename = argv[o.ind];
+    infix_hist_filename = argv[o.ind + 1];
 
     read_file(kmer_hist_filename, h_kmer);
     read_file(infix_hist_filename, h_infix_eq);
@@ -412,34 +416,36 @@ void output_hill(int argc, char *argv[]) {
     int num_points = 30; // Default
     char *kmer_hist_filename = nullptr;
 
-    for (int i = 1; i < argc; ++i) {
-        if (strcmp(argv[i], "-p") == 0) {
-            if (i + 1 < argc) {
-                num_points = atoi(argv[i+1]);
-                if (num_points <= 0) {
-                    fprintf(stderr, "Error: Number of points for -p must be positive.\n");
-                    fprintf(stderr, "Usage: pangrowth %s [-p <num_points>] <hist_kmer>\n", argv[0]);
-                    return;
-                }
-                i++; // Consume the value
-            } else {
-                fprintf(stderr, "Error: -p option requires a value.\n");
+    ketopt_t o = KETOPT_INIT;
+    int c;
+
+    // argv[0] is the command name (e.g., "hill")
+    // The '1' in ketopt means argv[0] is command name, options start from argv[1]
+    while ((c = ketopt(&o, argc, argv, 1, "p:", 0)) >= 0) {
+        if (c == 'p') {
+            num_points = atoi(o.arg);
+            if (num_points <= 0) {
+                fprintf(stderr, "Error: Number of points for -p must be positive.\n");
                 fprintf(stderr, "Usage: pangrowth %s [-p <num_points>] <hist_kmer>\n", argv[0]);
                 return;
             }
-        } else if (kmer_hist_filename == nullptr) {
-            kmer_hist_filename = argv[i];
-        } else {
-            fprintf(stderr, "Error: Too many file arguments.\n");
+        } else if (c == '?') { // Unknown option
+            fprintf(stderr, "Error: unknown option `-%c'.\n", o.optopt);
+            fprintf(stderr, "Usage: pangrowth %s [-p <num_points>] <hist_kmer>\n", argv[0]);
+            return;
+        } else if (c == ':') { // Missing argument for an option
+            fprintf(stderr, "Error: option `-%c' requires an argument.\n", o.optopt);
             fprintf(stderr, "Usage: pangrowth %s [-p <num_points>] <hist_kmer>\n", argv[0]);
             return;
         }
     }
 
-    if (kmer_hist_filename == nullptr) {
+    if (argc - o.ind != 1) {
+        fprintf(stderr, "Error: Expected 1 file argument (k-mer histogram).\n");
         fprintf(stderr, "Usage: pangrowth %s [-p <num_points>] <hist_kmer>\n", argv[0]);
         return;
     }
+    kmer_hist_filename = argv[o.ind];
 
     read_file(kmer_hist_filename, h_kmer);
     int n = h_kmer.size()-1;
