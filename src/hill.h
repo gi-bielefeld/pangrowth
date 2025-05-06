@@ -113,13 +113,13 @@ inv_gini_simpson(int m, vector<double> &h){
     return 1/gini_simpson;
 }
 
-//constexpr double static inline 
-//lchoose(int n, int k) {
-//    if (k > n) return 0;
-//    if (n < 0 || k < 0) return 0;
-//    if (k == 0 || k == n) return 0;
-//    return lgamma(n + 1) - lgamma(k + 1) - lgamma(n - k + 1);
-//}
+double static inline 
+lchoose(int n, int k) {
+    if (k < 0 || k > n) return R_NegInf; // log(C(n,k)) where C(n,k)=0
+    if (k == 0 || k == n) return 0.0;    // log(C(n,k)) where C(n,k)=1
+    if (k > n / 2) k = n - k;           // Symmetry: C(n, k) = C(n, n-k)
+    return lgammafn(n + 1.0) - lgammafn(k + 1.0) - lgammafn(n - k + 1.0);
+}
 
 double static inline 
 est_h(vector<double>& h, int i, int n, int m, double lchoose_nm) {
