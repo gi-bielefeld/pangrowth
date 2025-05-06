@@ -10,29 +10,29 @@
 //#define EPSILON numeric_limits<double>::epsilon()
 using namespace std;
 
-void read_file(const char* file, std::vector<double>& R){
-    std::cerr << "Reading file " << file << ".."<< std::flush;
-    std::ifstream fin(file);
+void read_file(const char* file, vector<double>& R){
+    cerr << "Reading file " << file << ".."<< std::flush;
+    ifstream fin(file);
     if (!fin.is_open()) {
-        std::cerr << "Error opening file: " << file << '\n';
-        std::exit(EXIT_FAILURE);
+        cerr << "Error opening file: " << file << '\n';
+        exit(EXIT_FAILURE);
     }
 
-    std::string line;
-    std::stringstream ss; 
-    while (std::getline(fin, line, '\n')) {
+    string line;
+    stringstream ss; 
+    while (getline(fin, line, '\n')) {
         double tmp;
         ss.str(line);
         ss >> tmp;
         R.push_back(tmp);
         ss.clear();
     }
-    std::cerr << "complete\n" << std::flush;
+    cerr << "complete\n" << std::flush;
 }
 
 void get_points(int n, int num_points, vector<int> &points) {
     if (n==1) {
-        std::cerr << "WARN: number of genomes needs to be greater than 1\n" << std::flush;
+        cerr << "WARN: number of genomes needs to be greater than 1\n" << std::flush;
         return;
     }
 
@@ -119,7 +119,7 @@ inv_gini_simpson(int m, vector<double> &h){
 //}
 
 double static inline 
-est_h(std::vector<double>& h, int i, int n, int m, double lchoose_nm) {
+est_h(vector<double>& h, int i, int n, int m, double lchoose_nm) {
     double tot = 0;
 
     for (int j = i; j <= n - m + i; j++) {
@@ -132,8 +132,8 @@ est_h(std::vector<double>& h, int i, int n, int m, double lchoose_nm) {
 }
 
 void static inline 
-est_h_hill(std::vector<double>& h, int n, int m, double lchoose_nm, std::vector<double>& h_hat_kmer) {
-    std::vector<double> log_h(n+1);
+est_h_hill(vector<double>& h, int n, int m, double lchoose_nm, vector<double>& h_hat_kmer) {
+    vector<double> log_h(n+1);
     for (int i = 1; i <= n; ++i) log_h[i] = log(h[i]);
 
     double lfact_i = 0;
