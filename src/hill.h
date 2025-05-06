@@ -3,12 +3,10 @@
 #include <string>
 #include <cmath>
 #include <omp.h>
-//#include "Rmath.h"
-//cout << lchoose(10,0) << '\n' << flush; // 0
-//cout << lchoose(0,0) << '\n' << flush;  // 0
-//cout << lchoose(0,10) << '\n' << flush; // -inf
-//#define EPSILON 0.0000000001
-#define EPSILON numeric_limits<double>::epsilon()
+#include "Rmath.h"
+
+#define EPSILON 0.00001
+//#define EPSILON numeric_limits<double>::epsilon()
 using namespace std;
 
 void read_file(const char* file, std::vector<double>& R){
@@ -31,14 +29,46 @@ void read_file(const char* file, std::vector<double>& R){
     std::cerr << "complete\n" << std::flush;
 }
 
-void get_points(int n, int m, vector<int> &points) {
-    double start = 1.0;
-    double end = 3.0 * n;
-    double step = (end - start) / (m - 1);
+void get_points(int n, int num_points, vector<int> &points) {
+    if (n==1) {
+        std::cerr << "WARN: number of genomes needs to be greater than 1\n" << std::flush;
+        return;
+    }
 
-    for (int i = 0; i < m; ++i) {
-        points.push_back(start + i * step);
-        if (points[i-1] < n && points[i] > n) points[i] = n;
+
+    double end = 3.0 * n;
+
+    if (num_points <= 3) {
+        points.push_back(1);
+        points.push_back(n);
+        points.push_back(int(end));
+    }
+
+    if (num_points > end) {
+        points.reserve(end);
+        for (int i = 1; i <= end; i++) { points[i-1] = i; }
+        return;
+    }
+
+    points.reserve(num_points);
+    double step = end / num_points;
+
+    for (double i = 1.0; i <= end; i+=step) {
+        points.push_back(int(floor(i)));
+    }
+
+
+    for (int j = 1; j < num_points; j++) {
+        if (points[j-1] < n && points[j] > n) {
+            points[j-1] = n;
+            break;
+        }
+    }
+
+    points[num_points-1] = int(floor(end));
+
+    if (points.size() != num_points) {
+        cout << "WARN: outputting " << points.size() << " instead of " << num_points << '\n' << flush;
     }
 }
 
@@ -79,12 +109,13 @@ inv_gini_simpson(int m, vector<double> &h){
     return 1/gini_simpson;
 }
 
-constexpr double static inline 
-lchoose(int n, int k) {
-    if (k > n) return 0;  
-    if (k == 0 || k == n) return 0;
-    return lgamma(n + 1) - lgamma(k + 1) - lgamma(n - k + 1);
-}
+//constexpr double static inline 
+//lchoose(int n, int k) {
+//    if (k > n) return 0;
+//    if (n < 0 || k < 0) return 0;
+//    if (k == 0 || k == n) return 0;
+//    return lgamma(n + 1) - lgamma(k + 1) - lgamma(n - k + 1);
+//}
 
 double static inline 
 est_h(std::vector<double>& h, int i, int n, int m, double lchoose_nm) {
@@ -106,7 +137,7 @@ est_h_hill(std::vector<double>& h, int n, int m, double lchoose_nm, std::vector<
 
     double lfact_i = 0;
     for (int i = 1; i <= m; i++) {
-        fprintf(stderr,"%d\n",i);
+        //fprintf(stderr,"%d\n",i);
         h_hat_kmer[i] = 0;
         //double lfact_i = lgamma(i + 1);
         double lfact_m_i = lgamma(m - i + 1);
@@ -128,18 +159,29 @@ est_h_hill(std::vector<double>& h, int n, int m, double lchoose_nm, std::vector<
     }
 }
 
-double static inline 
+
+double static inline
 est_h_unimer(vector<double> &hbar, int i, int n, int m) {
     double tot = 0;
-    //for (int sigma = 1; sigma <= n; sigma++) {
-    //untested, in case of error, go back to sigma=1
-    for (int sigma = i; sigma <= n; sigma++) {
+    for (int sigma = 1; sigma <= n; sigma++) {
         for (int j = i; j <= sigma; j++) {
             tot += exp(log(hbar[(sigma*(sigma-1)/2)+j]) + lchoose(j,i) + lchoose(n-sigma, m-i) - lchoose(n,m));
         }
     }
     return tot;
 }
+
+//double static inline 
+//est_h_unimer(vector<double> &hbar, int i, int n, int m) {
+//    double tot = 0;
+//    for (int sigma = i; sigma < i-m+n; sigma++) {
+//    //for (int sigma = i; sigma < n; sigma++) {
+//        for (int j = i; j <= sigma; j++) {
+//            tot += exp(log(hbar[(sigma*(sigma-1)/2)+j]) + lchoose(j,i) + lchoose(n-sigma, m-i) - lchoose(n,m));
+//        }
+//    }
+//    return tot;
+//}
 
 double static inline 
 est_h_extra(vector<double> &h, int i, int n, int x) {
@@ -317,10 +359,10 @@ hill(vector<double> &h_kmer, vector<int> &points) {
 }
 
 void output_hill_cdbg(int argc, char *argv[]) {
-    vector<double> h_kmer {0}, h_infix_eq{0}; //1-based index
+    vector<double> h_kmer{0}, h_infix_eq{0}; //1-based index
     vector<int> points;
     //points = {1, 6, 11, 16, 21, 26, 31, 36, 41, 46, 52, 57, 62, 67, 72, 77, 82, 87, 92, 97, 100};
-    int n_points = 30;
+    int num_points = 30;
 
     if (argc < 3) {
         fprintf(stderr, "Usage: pangrowth hill_cdbg <hist_kmer> <hist_infix> \n");
@@ -330,15 +372,17 @@ void output_hill_cdbg(int argc, char *argv[]) {
     read_file(argv[1], h_kmer);
     read_file(argv[2], h_infix_eq);
     int n = h_kmer.size()-1;
-    get_points(n, n_points, points);
+    num_points = min(3*n,num_points);
+    get_points(n, num_points, points);
     hill_cdbg(h_kmer, h_infix_eq, points);
 }
 
 void output_hill(int argc, char *argv[]) {
+    //vector<double> h_kmer {0}; //1-based index
     vector<double> h_kmer {0}; //1-based index
     vector<int> points;
     //points = {1, 6, 11, 16, 21, 26, 31, 36, 41, 46, 52, 57, 62, 67, 72, 77, 82, 87, 92, 97, 100};
-    int n_points = 30;
+    int num_points = 30;
 
     if (argc < 2) {
         fprintf(stderr, "Usage: pangrowth hill <hist_kmer>\n");
@@ -347,6 +391,7 @@ void output_hill(int argc, char *argv[]) {
 
     read_file(argv[1], h_kmer);
     int n = h_kmer.size()-1;
-    get_points(n, n_points, points);
+    num_points = min(3*n,num_points);
+    get_points(n, num_points, points);
     hill(h_kmer, points);
 }

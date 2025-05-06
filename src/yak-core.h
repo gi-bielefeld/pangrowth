@@ -1,4 +1,3 @@
-//https://github.com/lh3/kmer-cnt
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -14,15 +13,31 @@
 #include "kseq.h"
 #include "yak-hist.h"
 
-inline bool is_core(uint64_t kmer, uint64_t abs_quorum, multi_hat_kmer_s *h) {
-    uint64_t mask = (1<<h->suf) - 1;
-	hat_kmer_s *g = &h->h[kmer&mask];
-    khint_t k = ht_get(g->h, kmer);
-    //printf("C:%s %d %d \n",bits2kmer(kmer, 11), (kh_val(g->h, k)&MASK_COUNT), ((kh_val(g->h, k)&MASK_COUNT)) >= abs_quorum);
-    return ((kh_val(g->h, k)&MASK_COUNT) >= abs_quorum);
+#define kh_hash_generic(x) ((x))
+KHASHL_SET_INIT(, kmer_core_t, ct, uint64_t, kh_hash_generic, kh_eq_generic);
+
+kmer_core_t *extract_core_kmers(multi_hat_kmer_s *h, uint64_t abs_quorum) {
+    kmer_core_t *core_ht = ct_init();
+
+    for (uint64_t suf = 0; suf < (1ULL << h->suf); ++suf) {
+        hat_kmer_s *g = &h->h[suf];
+        for (khint_t i = 0; i != kh_end(g->h); ++i) {
+            if (kh_exist(g->h, i)) {
+                uint64_t kmer = kh_key(g->h, i);
+                uint64_t count = kh_val(g->h, i) & MASK_COUNT;
+
+                if (count >= abs_quorum) {
+                    int absent;
+                    ct_put(core_ht, kmer, &absent);
+                }
+            }
+        }
+    }
+
+    return core_ht;
 }
 
-static inline uint64_t stream_kmer_core(int k, int suf, int len, const char *seq, uint64_t abs_quorum, multi_hat_kmer_s *h){ 
+static inline uint64_t stream_kmer_core(int k, int suf, int len, const char *seq, uint64_t abs_quorum, kmer_core_t *core_ht){ 
     uint64_t core = 0;
     uint8_t overlap = 0;
 	uint64_t i, l;
@@ -34,7 +49,7 @@ static inline uint64_t stream_kmer_core(int k, int suf, int len, const char *seq
 			x[1] = x[1] >> 2 | (uint64_t)(3 - c) << shift;  // reverse strand
 			if (++l >= k) { // we find a k-mer
 				uint64_t y = x[0] < x[1]? x[0] : x[1];      // Canonicals!
-                if (is_core(y, abs_quorum, h)) {
+                if (ct_get(core_ht, y) != kh_end(core_ht)) {
                     core += k - overlap;
                     overlap = k-1;
                 } else {
@@ -61,71 +76,30 @@ typedef struct { // data structure for each step in kt_pipeline()
 	char **seq;
 } stepdat_kmer_core_s;
 
-static void *worker_pipe_kmer_core(void *data, int step, void *in) { // callback for kt_pipeline()
-	pldat_kmer_core_s *p = (pldat_kmer_core_s*)data;
-	if (step == 0) { // step 1: read a block of sequences
-		int ret;
-		stepdat_kmer_core_s *s;
-		mcalloc(s, 1);
-		s->p = p;
-		while ((ret = kseq_read(p->ks)) >= 0) {
-			int l = p->ks->seq.l;
-			if (l < p->opt->k) continue;
-			if (s->n == s->m) {
-				s->m = s->m < 16? 16 : s->m + (s->n>>1);
-				mrealloc(s->len, s->m);
-				mrealloc(s->seq, s->m);
-			}
-			mmalloc(s->seq[s->n], l);
-			memcpy(s->seq[s->n], p->ks->seq.s, l);
-			s->len[s->n++] = l;
-			s->sum_len += l;
-			s->nk += l - p->opt->k + 1;
-			if (s->sum_len >= p->opt->chunk_size)
-				break;
-		}
-		if (s->sum_len == 0) free(s);
-		else return s;
-	} else if (step == 1) { // step 2: count core k-mers
-		stepdat_kmer_core_s *s = (stepdat_kmer_core_s*)in;
-		int i, n = 1<<p->opt->suf, m;
-        if (p->opt->canonical) {
-            for (i = 0; i < s->n; ++i) {
-                uint64_t found_core = stream_kmer_core(p->opt->k, p->opt->suf, s->len[i], s->seq[i], s->p->abs_quorum, s->p->h);
-                free(s->seq[i]);
-		        p->core_count += found_core;
-            }
-        } 
-        //else { //non-canonical
-        //    for (i = 0; i < s->n; ++i) {
-        //        count_seq_buf(s->buf, p->opt->k, p->opt->suf, s->len[i], s->seq[i]);
-        //        free(s->seq[i]);
-        //    }
-        //}
-        //fprintf(stderr, "[M] processed %d sequences; %ld core k-mers\n", s->n, p->core_count);
-		free(s->seq); free(s->len);
-		free(s);
-	}
-	return 0;
+
+uint64_t count_core_nucleotide(const char *fn, const param_t *opt, kmer_core_t *core_ht, uint64_t abs_quorum) {
+    uint64_t core_nt = 0;
+    gzFile fp = gzopen(fn, "r");
+    if (!fp) {
+        fprintf(stderr, "Error: Cannot open file %s\n", fn);
+        exit(1);
+    }
+
+    kseq_t* seq = kseq_init(fp);
+
+    while (kseq_read(seq) >= 0) {
+        const char* s = seq->seq.s;
+        int len = seq->seq.l;
+        core_nt += stream_kmer_core(opt->k, opt->suf, len, s, abs_quorum, core_ht);
+    }
+
+    kseq_destroy(seq);
+    gzclose(fp);
+    return core_nt;
 }
 
-uint64_t count_kmer_core(const char *fn, const param_t *opt, multi_hat_kmer_s *h, uint64_t abs_quorum) {
-	pldat_kmer_core_s pl;
-	gzFile fp;
-    pl.core_count = 0;
-    pl.abs_quorum = abs_quorum;
-	if ((fp = gzopen(fn, "r")) == 0) return 0;
-	pl.ks = kseq_init(fp);
-	pl.opt = opt;
-    pl.h = h;
-	kt_pipeline(2, worker_pipe_kmer_core, &pl, 2);
-	kseq_destroy(pl.ks);
-	gzclose(fp);
-    return pl.core_count;
-}
-
-uint64_t count_kmer_core_file(const char *fn1, const param_t *opt, multi_hat_kmer_s *h, uint64_t abs_quorum) {
-	uint64_t core_kmer_count = count_kmer_core(fn1, opt, h, abs_quorum); 
+uint64_t count_kmer_core_file(const char *fn1, const param_t *opt, kmer_core_t *core_ht, uint64_t abs_quorum) {
+	uint64_t core_kmer_count = count_core_nucleotide(fn1, opt, core_ht, abs_quorum); 
     printf("%s\t%ld\n", fn1, core_kmer_count);
     return core_kmer_count;
 }
@@ -219,6 +193,13 @@ void output_kmer_core(int argc, char *argv[]){
 	fprintf(stderr, "[M::%s] %ld distinct k-mers\n", __func__, (long)h->tot);
 
     // Second phase: Core
+    //
+	fprintf(stderr, "[M::%s] extracting core k-mers\n", __func__);
+    kmer_core_t *core_ht = extract_core_kmers(h, abs_quorum);
+    //print_kmer_debug(h);
+    ch_destroy(h);
+	fprintf(stderr, "[M::%s] counting core nucleotides\n", __func__);
+
     uint64_t core_count = 0;
     ID_GENOME = 1;
     if (opt.filelist) {
@@ -234,22 +215,15 @@ void output_kmer_core(int argc, char *argv[]){
 
         while ((getline(&line, &len, fp)) != -1) {
             chomp(line);
-            core_count = count_kmer_core_file(line, &opt, h, abs_quorum);
+            core_count = count_kmer_core_file(line, &opt, core_ht, abs_quorum);
             ID_GENOME++;
         }
         fclose(fp);
         if (line) free(line);
     } else {
         for (i = 0; i < NUM_GENOMES; i++){
-            core_count = count_kmer_core_file(argv[o.ind+i], &opt, h, abs_quorum);
+            core_count = count_kmer_core_file(argv[o.ind+i], &opt, core_ht, abs_quorum);
             ID_GENOME++;
         }
     }
-
-    //print_kmer_debug(h);
-
-	//hist_kmer(h, cnt, opt.n_thread);
-	////for (i = 1; i <= NUM_GENOMES; ++i) printf("%d\t%lld\n", i,(long long)cnt[i]);
-	//for (i = 1; i <= NUM_GENOMES; ++i) printf("%lld\n", (long long)cnt[i]);
-	ch_destroy(h);
 }
