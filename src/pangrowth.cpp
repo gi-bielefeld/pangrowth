@@ -1,6 +1,7 @@
 #include "size_pangenome.h"
 #include "yak-hist.h"
 #include "yak-infix.h"
+#include "yak-infix-telomer.h"
 #include "yak-core.h"
 #include "hill.h"
 

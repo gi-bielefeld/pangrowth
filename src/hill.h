@@ -170,10 +170,10 @@ inv_gini_simpson(int m, vector<double> &h){
 
 //double static inline 
 //lchoose(int n, int k) {
-//    if (k < 0 || k > n) return R_NegInf; // log(C(n,k)) where C(n,k)=0
+//    //if (k < 0 || k > n) return R_NegInf; // log(C(n,k)) where C(n,k)=0
 //    if (k == 0 || k == n) return 0.0;    // log(C(n,k)) where C(n,k)=1
 //    if (k > n / 2) k = n - k;           // Symmetry: C(n, k) = C(n, n-k)
-//    return lgammafn(n + 1.0) - lgammafn(k + 1.0) - lgammafn(n - k + 1.0);
+//    return lgammaf(n + 1.0) - lgammaf(k + 1.0) - lgammaf(n - k + 1.0);
 //}
 
 double static inline 
@@ -221,7 +221,7 @@ est_h_hill(vector<double>& h, int n, int m, double lchoose_nm, vector<double>& h
 double static inline
 est_h_unimer(vector<double> &hbar, int i, int n, int m) {
     double tot = 0;
-    for (int sigma = 1; sigma <= n; sigma++) {
+    for (int sigma = i; sigma <= n; sigma++) {
         for (int j = i; j <= sigma; j++) {
             tot += exp(log(hbar[(sigma*(sigma-1)/2)+j]) + lchoose(j,i) + lchoose(n-sigma, m-i) - lchoose(n,m));
         }
@@ -484,7 +484,7 @@ param_hill_cdbg_t cli_hill_cdbg(int argc, char *argv[]) {
     }
 
     params.kmer_hist_filename = argv[params.o_index];
-    params.infix_hist_filename = argv[params.o_index];
+    params.infix_hist_filename = argv[params.o_index+1];
     return params;
 }
 
