@@ -1,6 +1,7 @@
 #include <iostream>
 #include <vector>
 #include <string>
+#include <algorithm>
 #include <cmath>
 #include <sstream>
 #include <omp.h>
@@ -124,6 +125,7 @@ void sample_points(param_hill_t &params) {
             cerr << "Error: No valid points found in file.\n";
             return;
         }
+        sort(params.points.begin(), params.points.end());
     } else {
         generate_sample_points(params);
     }
@@ -305,12 +307,14 @@ hill_cdbg(vector<double> &h_kmer, vector<double> &h_infix_eq, vector<int> &point
     }
 
     //** Observed **//
-    p++;
-    printf("obs\t%d\t", (int)n);
-    for (int i = 1; i <= n; i++) {
-        h_hat_unitig[i] = h_kmer[i] - h_unimer[i];
+    if (points[p] == n) {
+        p++;
+        printf("obs\t%d\t", (int)n);
+        for (int i = 1; i <= n; i++) {
+            h_hat_unitig[i] = h_kmer[i] - h_unimer[i];
+        }
+        print_hill(m, h_hat_unitig);
     }
-    print_hill(m, h_hat_unitig);
 
     //** Extrapolation **//
     // Unseen k-mers
@@ -381,12 +385,14 @@ hill(vector<double> &h_kmer, vector<int> &points) {
     }
 
     //** Observed **//
-    p++;
-    printf("obs\t%d\t", (int)n);
-    for (int i = 1; i <= n; i++) {
-        h_hat_kmer[i] = h_kmer[i];
+    if (points[p] == n) {
+        p++;
+        printf("obs\t%d\t", (int)n);
+        for (int i = 1; i <= n; i++) {
+            h_hat_kmer[i] = h_kmer[i];
+        }
+        print_hill(m, h_hat_kmer);
     }
-    print_hill(m, h_hat_kmer);
 
     //** Extrapolation **//
     // Unseen k-mers
