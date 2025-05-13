@@ -459,7 +459,7 @@ param_hill_t cli_hill(int argc, char *argv[]) {
 
     //helper
     if (params.err) {
-        fprintf(stderr, "Usage: pangrowth %s [-p <num_points>] <hist_kmer>\n", argv[0]);
+        fprintf(stderr, "Usage: pangrowth %s [-p <num_points>, -f <file_points>] <hist_kmer>\n", argv[0]);
         exit(EXIT_FAILURE);
     }
 
@@ -479,7 +479,7 @@ param_hill_cdbg_t cli_hill_cdbg(int argc, char *argv[]) {
 
     //helper
     if (params.err) {
-        fprintf(stderr, "Usage: pangrowth %s [-p <num_points>] <hist_kmer> <hist_infix>\n", argv[0]);
+        fprintf(stderr, "Usage: pangrowth %s [-p <num_points>, -f <file_points>] <hist_kmer> <hist_infix>\n", argv[0]);
         exit(EXIT_FAILURE);
     }
 

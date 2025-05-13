@@ -24,7 +24,7 @@ typedef struct {
 } infix_storage_s;
 #define infix_eq(a, b) ((a) == (b))
 #define infix_hash(a) ((a))
-KHASHL_MAP_INIT(, hat_infix_t, htit, uint64_t, infix_storage_s, infix_hash, infix_eq)
+KHASHL_MAP_INIT(, hat_infix_t, hti, uint64_t, infix_storage_s, infix_hash, infix_eq)
 
 static inline uint64_t get_infix (uint64_t kmer_bits, int k) {
     uint64_t mask = (1ULL << (2 * (k - 1))) - 1;
@@ -49,7 +49,7 @@ multi_hat_infix_s *infix_init(int k, int suf) {
 	ht->k = k, ht->suf = suf;
 	mcalloc(ht->ht, 1<<ht->suf);
 	for (i = 0; i < 1<<ht->suf; ++i)
-		ht->ht[i].ht = htit_init();
+		ht->ht[i].ht = hti_init();
 	return ht;
 }
 
@@ -57,7 +57,7 @@ void infix_destroy(multi_hat_infix_s *ht) {
 	int i;
 	if (ht == 0) return;
 	for (i = 0; i < 1<<ht->suf; ++i)
-		htit_destroy(ht->ht[i].ht);
+		hti_destroy(ht->ht[i].ht);
 	free(ht->ht); free(ht);
 }
 
@@ -76,7 +76,7 @@ int hat_insert_infix(multi_hat_infix_s *ht, int n, const uint64_t *a) {
         uint8_t last_nt = kp1mer & 3ULL;
         uint8_t combined_nt = ((first_nt << 2) | last_nt);
 		int absent;
-        khint_t z = htit_put(h, infix, &absent);
+        khint_t z = hti_put(h, infix, &absent);
         //printf("%s\n", bits2kmer(kp1mer,k+1)); 
         //printf("%s %d\n", bits2kmer(infix,k+1), absent);
         if (absent) { 
@@ -337,15 +337,50 @@ void print_kmer_debug(multi_hat_infix_s* ht) {
     }
 }
 
+void print_kmer_debug_infix_edges(multi_hat_infix_s* ht) {
+    int k = ht->k;
+	for (int i = 0; i < 1<<ht->suf; ++i) {
+        hat_infix_t *g = ht->ht[i].ht;
+        for (uint32_t j = 0; j < kh_end(g); ++j) {
+            if (kh_exist(g,j)) {
+                int count = 0;
+                bool is_edge = false;
+                for (int e = 0; e < 16; e++) {
+                    if (kh_val(g,j).edges[e] != 0) {
+                        count++; 
+                    }
+                }
+                if(count == 1) {
+                    for (int e = 0; e < 16; e++) {
+                        if (kh_val(g,j).edges[e] != 0) {
+                            if(kh_val(g,j).edges[e] != kh_val(g, j).sigma) {
+                                is_edge=true;
+                            }
+                        }
+                    }
+                }
+                if (count == 0) {
+                    is_edge = kh_val(g,j).sigma != 0;
+                }
+                if(count != 1 || is_edge) {
+                    uint64_t infix = kh_key(g,j);
+                    printf("%s\n", bits2kmer(infix, k-1));
+                }
+            }
+        }
+    }
+}
+
 void output_hist_infix(int argc, char *argv[]){
 	multi_hat_infix_s *ht = 0;
     bool use_telemor = false;
+    bool debug = false;
 	int c;
 	int i;
 	param_t param;
 	ketopt_t options = KETOPT_INIT;
 	param_init(&param);
-	while ((c = ketopt(&options, argc, argv, 1, "k:s:K:t:i:bT", 0)) >= 0) {
+	while ((c = ketopt(&options, argc, argv, 1, "k:s:K:t:i:bTD", 0)) >= 0) {
 		if (c == 'k') param.k = atoi(options.arg);
 		else if (c == 's') param.suf = atoi(options.arg);
 		else if (c == 'K') param.chunk_size = atoi(options.arg);
@@ -353,6 +388,7 @@ void output_hist_infix(int argc, char *argv[]){
 		else if (c == 'b') param.canonical = false;
 		else if (c == 'i') param.filelist = options.arg;
 		else if (c == 'T') use_telemor = true;
+		else if (c == 'D') debug = true;
 	}
 
 	if (argc - options.ind < 1 && !param.filelist) {
@@ -369,7 +405,7 @@ void output_hist_infix(int argc, char *argv[]){
 	}
 
     if (use_telemor) {
-        output_hist_infix_tel(argc, argv, param, options);
+        output_hist_infix_tel(argc, argv, param, options, debug);
         return;
     }
 
@@ -426,6 +462,12 @@ void output_hist_infix(int argc, char *argv[]){
         }
     }
 	fprintf(stderr, "[M::%s] %ld distinct %d-mers\n", __func__, (long)ht->tot, param.k-1);
+
+    if (debug) {
+        print_kmer_debug_infix_edges(ht);
+        //print_kmer_debug_infix_tel_array(ht);
+        return;
+    }
 
 	//print_infix_debug(ht);
 	//print_kmer_debug(ht);
