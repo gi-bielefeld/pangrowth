@@ -269,7 +269,7 @@ static inline void infix_tel_insert_buf(infix_tel_buf_s *buf, int suf, uint64_t 
 // k = k+1 here 
 static void count_seq_buf_can_infix_tel(infix_tel_buf_s *buf, infix_tel_buf_telomer_s *buf_tel_left, infix_tel_buf_telomer_s *buf_tel_right, int k, int suf, int len, const char *seq){ 
 	int i, l;
-	uint64_t x[2], mask_kp1 = (1ULL<<(k+1)*2) - 1, shift = (k+1 - 1) * 2, mask_k = mask_kp1 >> 2;
+	uint64_t x[2], mask_kp1 = (1ULL<<(k+1)*2) - 1, shift = (k+1 - 1) * 2, mask_k = mask_kp1 >> 2, mask_km1 = mask_k >> 2;
 	for (i = l = 0, x[0] = x[1] = 0; i < len; ++i) {
 		int c = seq_nt4_table[(uint8_t)seq[i]];
 		if (c < 4) { // not an "N" base
@@ -284,7 +284,7 @@ static void count_seq_buf_can_infix_tel(infix_tel_buf_s *buf, infix_tel_buf_telo
                 } else {
 				    infix_tel_insert_buf_telomer(buf_tel_right, x[1] >> 2);
                 }
-            } else if (l >= k+1 && (x[0] >> 2) != (x[0] & mask_k) && x[0] != x[1]) { 
+            } else if (l >= k+1 && (x[0] >> 2) != (x[0] & mask_k) && ((x[0]>>2)&mask_km1) != ((x[1]>>2)&mask_km1)) { 
                 //we found a k+1-mer and it is not formed by the same two k-mers x != a^k
                 //and x != yy^rc which means x != x^rc
                 uint64_t infix[2] = {get_infix_tel(x[0], k), get_infix_tel(x[1], k)};
@@ -488,19 +488,19 @@ static void worker_infix_tel_hist(void *data, long i, int tid) { // callback for
             uint64_t right_telomer[4] = {0,0,0,0}; //#not A$, not C$, not G$, not T$
             uint64_t sum_left = 0;
             uint64_t sum_right = 0;
-            for (int e = 16; e < 20; e++) { sum_left+=kh_val(g,i).edges[e]; }
+            for (int e = 16; e < 20; e++) { sum_left +=kh_val(g,i).edges[e]; }
             for (int e = 20; e < 24; e++) { sum_right+=kh_val(g,i).edges[e]; }
-            for (int e = 16; e < 20; e++) { 
+            for (int e = 16; e < 20; e++) {
                 left_telomer[e-16] = sum_left - kh_val(g,i).edges[e];
             }
-            for (int e = 20; e < 24; e++) { 
+            for (int e = 20; e < 24; e++) {
                 right_telomer[e-20] = sum_right - kh_val(g,i).edges[e];
             }
     
             for (int e = 0; e < 16; e++) {
                 if(kh_val(g,i).edges[e]) {
-                    uint64_t not_l = left_telomer[get_first_base(e)];
-                    uint64_t not_r = right_telomer[get_second_base(e)];
+                    uint64_t not_l = left_telomer[get_second_base(e)];
+                    uint64_t not_r = right_telomer[get_first_base(e)];
                     uint64_t sigma = (uint64_t)(kh_val(g,i).sigma) + not_l + not_r;
                     uint64_t edge = (uint64_t)(kh_val(g,i).edges[e]);
                     uint64_t idx = (sigma * (sigma-1))/2 + edge - 1;
@@ -568,51 +568,78 @@ void print_kmer_debug_infix_tel_array(multi_hat_infix_tel_s* ht) {
     }
 }
 
+bool is_unimer(hat_infix_tel_t *g, int j) {
+    uint64_t infix = kh_key(g,j);
+    //fprintf(stderr, "%s\n", bits2kmer(infix, k-1));
+    int count = 0;
+    bool is_edge = false;
+    for (int e = 0; e < 16; e++) {
+        if (kh_val(g,j).edges[e] != 0) {
+            count++; 
+        }
+    }
+    if(count == 1) {
+        uint8_t pos;
+        for (int e = 0; e < 16; e++) {
+            if (kh_val(g,j).edges[e] != 0) {
+                pos = e;
+            }
+        }
+
+        if(kh_val(g,j).edges[pos] != kh_val(g, j).sigma) {
+            is_edge = true;
+        }
+
+        for (int e = 16; e < 24; e++) {
+            if (kh_val(g,j).edges[e] != 0) {
+                if(!contained(e, pos)) {
+                    is_edge=true;
+                }
+            }
+        }
+    }
+    if (count == 0) {
+        is_edge = kh_val(g,j).sigma != 0;
+        for (int e = 16; e < 24; e++) {
+            if (kh_val(g,j).edges[e] != 0) {
+                is_edge = true;
+            }
+        }
+    }
+    return !(count != 1 || is_edge);
+}
+
 void print_kmer_debug_infix_tel_edges(multi_hat_infix_tel_s* ht) {
     int k = ht->k;
 	for (int i = 0; i < 1<<ht->suf; ++i) {
         hat_infix_tel_t *g = ht->ht[i].ht;
         for (uint32_t j = 0; j < kh_end(g); ++j) {
             if (kh_exist(g,j)) {
-                uint64_t infix = kh_key(g,j);
-                //fprintf(stderr, "%s\n", bits2kmer(infix, k-1));
-                int count = 0;
-                bool is_edge = false;
-                for (int e = 0; e < 16; e++) {
-                    if (kh_val(g,j).edges[e] != 0) {
-                        count++; 
-                    }
+                if(!is_unimer(g,j)) {
+                    uint64_t infix = kh_key(g,j);
+                    printf("%s\n", bits2kmer(infix, k-1));
                 }
-                if(count == 1) {
+            }
+        }
+    }
+}
+
+void print_kmer_debug_infix_tel_unimer(multi_hat_infix_tel_s* ht) {
+    int k = ht->k;
+	for (int i = 0; i < 1<<ht->suf; ++i) {
+        hat_infix_tel_t *g = ht->ht[i].ht;
+        for (uint32_t j = 0; j < kh_end(g); ++j) {
+            if (kh_exist(g,j)) {
+                if(is_unimer(g,j)) {
                     uint8_t pos;
+                    uint64_t infix = kh_key(g,j);
                     for (int e = 0; e < 16; e++) {
                         if (kh_val(g,j).edges[e] != 0) {
-                            pos = e;
+                            uint64_t left_kmer =  (((e & 12ULL)) << (2*(k-1)-2)) | infix ; //12=0b1100
+                            uint64_t kp1mer = (left_kmer << 2) | (e & 3ULL);
+                            printf("%s\n", bits2kmer(kp1mer, k+1));
                         }
                     }
-
-                    if(kh_val(g,j).edges[pos] != kh_val(g, j).sigma) {
-                        is_edge = true;
-                    }
-
-                    for (int e = 16; e < 24; e++) {
-                        if (kh_val(g,j).edges[e] != 0) {
-                            if(!contained(e, pos)) {
-                                is_edge=true;
-                            }
-                        }
-                    }
-                }
-                if (count == 0) {
-                    is_edge = kh_val(g,j).sigma != 0;
-                    for (int e = 16; e < 24; e++) {
-                        if (kh_val(g,j).edges[e] != 0) {
-                            is_edge = true;
-                        }
-                    }
-                }
-                if(count != 1 || is_edge) {
-                    printf("%s\n", bits2kmer(infix, k-1));
                 }
             }
         }
@@ -677,7 +704,8 @@ void output_hist_infix_tel(int argc, char *argv[], param_t param, ketopt_t optio
 	fprintf(stderr, "[M::%s] %ld distinct %d-mers\n", __func__, (long)ht->tot, param.k-1);
 
     if (debug) {
-        print_kmer_debug_infix_tel_edges(ht);
+        print_kmer_debug_infix_tel_unimer(ht);
+        //print_kmer_debug_infix_tel_edges(ht);
         //print_kmer_debug_infix_tel_array(ht);
         return;
     }
