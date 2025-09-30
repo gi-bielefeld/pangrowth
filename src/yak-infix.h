@@ -19,7 +19,7 @@
 typedef struct {
     uint16_t edges[16];
     uint8_t last_edge;
-    uint32_t last_genome;
+    uint16_t last_genome;
     uint16_t sigma; 
 } infix_storage_s;
 #define infix_eq(a, b) ((a) == (b))

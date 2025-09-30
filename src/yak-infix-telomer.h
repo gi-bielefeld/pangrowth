@@ -19,7 +19,7 @@
 typedef struct {
     uint16_t edges[24];
     uint8_t last_edge;
-    uint32_t last_genome;
+    uint16_t last_genome;
     uint16_t sigma; 
 } infix_telomer_storage_t;
 #define infix_eq(a, b) ((a) == (b))
@@ -637,7 +637,7 @@ void print_kmer_debug_infix_tel_unimer(multi_hat_infix_tel_s* ht) {
                         if (kh_val(g,j).edges[e] != 0) {
                             uint64_t left_kmer =  (((e & 12ULL)) << (2*(k-1)-2)) | infix ; //12=0b1100
                             uint64_t kp1mer = (left_kmer << 2) | (e & 3ULL);
-                            printf("%s\n", bits2kmer(kp1mer, k+1));
+                            printf("%s %d\n", bits2kmer(kp1mer, k+1), kh_val(g,j).edges[e]);
                         }
                     }
                 }
