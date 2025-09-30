@@ -42,7 +42,7 @@ make
 
 To plot the results we need the following python libraries: numpy, pandas, matplotlib, scipy and searbon. You can install them with:
 ```
-pip install -r dependencies.txt
+pip install -r requirements.txt
 ```
 
 ## Usage
