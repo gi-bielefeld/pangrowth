@@ -15,3 +15,5 @@
 **/plots
 **/.cache
 benchmark
+.aider*
+test/
