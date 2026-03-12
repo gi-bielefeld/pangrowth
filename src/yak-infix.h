@@ -257,7 +257,7 @@ static void *worker_pipe_infix(void *data, int step, void *in) { // callback for
 		}
 		p->ht->tot += n_ins;
 		free(s->buf);
-        fprintf(stderr, "[M] processed %d sequences; %ld distinct %d-mers in the hash table\n", s->n, (long)p->ht->tot, p->param->k-1);
+        fprintf(stderr, "[M %d/%d] processed %d sequences; %ld distinct %d-mers in the hash table\n", ID_GENOME, NUM_GENOMES, s->n, (long)p->ht->tot, p->param->k-1);
 		free(s);
 	}
 	return 0;
