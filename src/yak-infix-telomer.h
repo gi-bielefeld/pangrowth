@@ -20,7 +20,10 @@ typedef struct {
     uint16_t edges[24];
     uint8_t last_edge;
     uint16_t last_genome;
-    uint16_t sigma; 
+    uint16_t sigma;
+    uint8_t  intra_left[4];
+    uint8_t  intra_right[4];
+    uint16_t intra_genome;
 } infix_telomer_storage_t;
 #define infix_eq(a, b) ((a) == (b))
 #define infix_hash(a) ((a))
@@ -137,34 +140,52 @@ int hat_insert_infix_tel(multi_hat_infix_tel_s *ht, int n, const uint64_t *a) {
         uint8_t combined_nt = ((first_nt << 2) | last_nt);
 		int absent;
         khint_t z = htit_put(h, infix, &absent);
-        if (absent) { 
+        if (absent) {
             n_ins++;
-            memset(kh_val(h,z).edges, 0, 24*sizeof(uint16_t));
-            kh_val(h,z).last_edge = combined_nt;
-            kh_val(h,z).edges[kh_val(h,z).last_edge]++;
-            kh_val(h,z).last_genome = ID_GENOME;
-            kh_val(h,z).sigma = 1;
-        } else if (kh_val(h,z).last_genome == ID_GENOME && 
-                   kh_val(h,z).last_edge != combined_nt && 
-                   kh_val(h,z).last_edge != 255) {
-            if (!contained(combined_nt, kh_val(h,z).last_edge)){
-                kh_val(h,z).edges[kh_val(h,z).last_edge]--;
-                kh_val(h,z).last_edge = 255;
-            } else if (is_telomer(kh_val(h,z).last_edge)) { //unite
-                kh_val(h,z).edges[kh_val(h,z).last_edge]--;
-                uint8_t new_edge = unite(kh_val(h,z).last_edge, combined_nt);
-                kh_val(h,z).last_edge = new_edge;
-                kh_val(h,z).edges[kh_val(h,z).last_edge]++;
-                kh_val(h,z).last_genome = ID_GENOME;
-                kh_val(h,z).sigma++;
+            memset(&kh_val(h,z), 0, sizeof(infix_telomer_storage_t));
+            kh_val(h,z).last_edge    = 255;
+            kh_val(h,z).intra_genome = (uint16_t)ID_GENOME;
+        }
+        if (kh_val(h,z).intra_genome != (uint16_t)ID_GENOME) {
+            memset(kh_val(h,z).intra_left,  0, 4);
+            memset(kh_val(h,z).intra_right, 0, 4);
+            kh_val(h,z).intra_genome = (uint16_t)ID_GENOME;
+        }
+        if (kh_val(h,z).intra_left[first_nt]  < (uint8_t)MIN_COUNT) kh_val(h,z).intra_left[first_nt]++;
+        if (kh_val(h,z).intra_right[last_nt]  < (uint8_t)MIN_COUNT) kh_val(h,z).intra_right[last_nt]++;
+        {
+            bool left_ok  = (kh_val(h,z).intra_left[first_nt]  >= (uint8_t)MIN_COUNT);
+            bool right_ok = (kh_val(h,z).intra_right[last_nt]  >= (uint8_t)MIN_COUNT);
+            if (left_ok || right_ok) {
+                uint8_t effective;
+                if      (left_ok && right_ok)  effective = combined_nt;
+                else if (left_ok)              effective = right_empty(first_nt);
+                else                           effective = left_empty(last_nt);
+                if (kh_val(h,z).last_genome == ID_GENOME &&
+                    kh_val(h,z).last_edge != effective &&
+                    kh_val(h,z).last_edge != 255) {
+                    if (!contained(effective, kh_val(h,z).last_edge)) {
+                        kh_val(h,z).edges[kh_val(h,z).last_edge]--;
+                        kh_val(h,z).last_edge = 255;
+                    } else if (is_telomer(kh_val(h,z).last_edge)) { //unite
+                        kh_val(h,z).edges[kh_val(h,z).last_edge]--;
+                        uint8_t new_edge = unite(kh_val(h,z).last_edge, effective);
+                        kh_val(h,z).last_edge = new_edge;
+                        kh_val(h,z).edges[kh_val(h,z).last_edge]++;
+                        kh_val(h,z).last_genome = ID_GENOME;
+                        kh_val(h,z).sigma++;
+                    }
+                    // if the previous one is a k+1-mer and you are adding a contained
+                    // telomer then -> nothing to do
+                } else if (kh_val(h,z).last_genome != ID_GENOME) {
+                    kh_val(h,z).last_edge = effective;
+                    kh_val(h,z).edges[kh_val(h,z).last_edge]++;
+                    kh_val(h,z).last_genome = ID_GENOME;
+                    // only count genome in sigma for full edges; telomer edges (cases 2/3)
+                    // are promoted to full edges via unite, which increments sigma then
+                    if (!is_telomer(effective)) kh_val(h,z).sigma++;
+                }
             }
-            // if the previous one is a k+1-mers and you are adding a contained
-            // telomer then -> nothing to do
-        } else if (kh_val(h,z).last_genome != ID_GENOME) {
-            kh_val(h,z).last_edge = combined_nt;
-            kh_val(h,z).edges[kh_val(h,z).last_edge]++;
-            kh_val(h,z).last_genome = ID_GENOME;
-            kh_val(h,z).sigma++;
         }
         //printf("%p %s(%d) %d %d\n", &kh_val(h,z), bits2kmer(kh_val(h,z).last_edge, 2), kh_val(h,z).last_edge, kh_val(h,z).last_genome, kh_val(h,z).sigma);
 	}
@@ -180,52 +201,63 @@ int hat_insert_infix_tel_telomer(multi_hat_infix_tel_s *ht, bool is_left, int n,
 	for (int j = 0; j < n; ++j) {
         uint64_t kmer = a[j];
         uint64_t afix;
-        uint8_t combined_nt; // = ((first_nt << 2) | last_nt);
+        uint8_t combined_nt;
+        uint8_t first_nt = 0, last_nt = 0;
         if (is_left) {
             afix = get_left_k_minus_one_mer(kmer, k);
-            uint8_t last_nt = kmer & 3ULL;
+            last_nt = kmer & 3ULL;
             combined_nt = left_empty(last_nt);
         } else {
             afix = get_right_k_minus_one_mer(kmer, k);
-            uint8_t first_nt = (kmer >> (2 * (k-1)));
+            first_nt = (kmer >> (2 * (k-1)));
             combined_nt = right_empty(first_nt);
         }
-        //printf("%s\n", bits2kmer(kmer,k)); 
-        //printf("%s\n", bits2kmer(afix,k-1));
-        //printf("%s\n", combined_nt);
         hat_infix_tel_t *h = ht->ht[afix&mask].ht;
-		int absent;
+        int absent;
         khint_t z = htit_put(h, afix, &absent);
-        if (absent) { 
+        if (absent) {
             n_ins++;
-            memset(kh_val(h,z).edges, 0, 24*sizeof(uint16_t));
-            kh_val(h,z).last_edge = combined_nt;
-            kh_val(h,z).edges[kh_val(h,z).last_edge]++;
-            kh_val(h,z).last_genome = ID_GENOME;
-            kh_val(h,z).sigma = 0;
-        } else if (kh_val(h,z).last_genome == ID_GENOME && 
-                   kh_val(h,z).last_edge != combined_nt && 
-                   kh_val(h,z).last_edge != 255) {
-            if (!contained(combined_nt, kh_val(h,z).last_edge)){
-                kh_val(h,z).edges[kh_val(h,z).last_edge]--;
-                kh_val(h,z).last_edge = 255;
-            } else if (is_telomer(kh_val(h,z).last_edge)) { //unite
-                kh_val(h,z).edges[kh_val(h,z).last_edge]--;
-                uint8_t new_edge = unite(kh_val(h,z).last_edge, combined_nt);
-                kh_val(h,z).last_edge = new_edge;
+            memset(&kh_val(h,z), 0, sizeof(infix_telomer_storage_t));
+            kh_val(h,z).last_edge    = 255;
+            kh_val(h,z).intra_genome = (uint16_t)ID_GENOME;
+        }
+        if (kh_val(h,z).intra_genome != (uint16_t)ID_GENOME) {
+            memset(kh_val(h,z).intra_left,  0, 4);
+            memset(kh_val(h,z).intra_right, 0, 4);
+            kh_val(h,z).intra_genome = (uint16_t)ID_GENOME;
+        }
+        bool slot_ok;
+        if (is_left) {
+            if (kh_val(h,z).intra_right[last_nt] < (uint8_t)MIN_COUNT) kh_val(h,z).intra_right[last_nt]++;
+            slot_ok = (kh_val(h,z).intra_right[last_nt] >= (uint8_t)MIN_COUNT);
+        } else {
+            if (kh_val(h,z).intra_left[first_nt] < (uint8_t)MIN_COUNT) kh_val(h,z).intra_left[first_nt]++;
+            slot_ok = (kh_val(h,z).intra_left[first_nt] >= (uint8_t)MIN_COUNT);
+        }
+        if (slot_ok) {
+            if (kh_val(h,z).last_genome == ID_GENOME &&
+                kh_val(h,z).last_edge != combined_nt &&
+                kh_val(h,z).last_edge != 255) {
+                if (!contained(combined_nt, kh_val(h,z).last_edge)) {
+                    kh_val(h,z).edges[kh_val(h,z).last_edge]--;
+                    kh_val(h,z).last_edge = 255;
+                } else if (is_telomer(kh_val(h,z).last_edge)) { //unite
+                    kh_val(h,z).edges[kh_val(h,z).last_edge]--;
+                    uint8_t new_edge = unite(kh_val(h,z).last_edge, combined_nt);
+                    kh_val(h,z).last_edge = new_edge;
+                    kh_val(h,z).edges[kh_val(h,z).last_edge]++;
+                    kh_val(h,z).last_genome = ID_GENOME;
+                    kh_val(h,z).sigma++;
+                }
+                // if the previous one is a k+1-mer and you are adding a contained
+                // telomer then -> nothing to do
+            } else if (kh_val(h,z).last_genome != ID_GENOME) {
+                kh_val(h,z).last_edge = combined_nt;
                 kh_val(h,z).edges[kh_val(h,z).last_edge]++;
                 kh_val(h,z).last_genome = ID_GENOME;
-                kh_val(h,z).sigma++;
+                //kh_val(h,z).sigma++;  // sigma not incremented for telomers
             }
-            // if the previous one is a k+1-mers and you are adding a contained
-            // telomer then -> nothing to do
-        } else if (kh_val(h,z).last_genome != ID_GENOME) {
-            kh_val(h,z).last_edge = combined_nt;
-            kh_val(h,z).edges[kh_val(h,z).last_edge]++;
-            kh_val(h,z).last_genome = ID_GENOME;
-            //kh_val(h,z).sigma++;
         }
-        //printf("%p %s(%d) %d %d\n", &kh_val(h,z), bits2kmer(kh_val(h,z).last_edge, 2), kh_val(h,z).last_edge, kh_val(h,z).last_genome, kh_val(h,z).sigma);
 	}
 	return n_ins;
 }
@@ -664,6 +696,7 @@ void output_hist_infix_tel(int argc, char *argv[], param_t param, ketopt_t optio
     MASK_GENOME = ((1 << BITS_GENOME) - 1) << (BITS_GENOME);
     TOTAL_BITS  = BITS_GENOME*2;
     SUF = param.suf;
+    MIN_COUNT = param.min_count;
 
     fprintf(stderr, "Number of genomes:\t%d\n", NUM_GENOMES);
     fprintf(stderr, "Number of threads:\t%d\n", param.n_thread);
@@ -685,11 +718,12 @@ void output_hist_infix_tel(int argc, char *argv[], param_t param, ketopt_t optio
 
         while ((getline(&line, &len, fp)) != -1) {
             chomp(line);
-            if (ht) {
-                ID_GENOME++;
-                ht = count_infix_tel_file(line, &param, ht);
-            } else {
-                ht = count_infix_tel_file(line, &param, 0);
+            if (ht) ID_GENOME++;
+            char *token = strtok(line, ",");
+            while (token != NULL) {
+                if (!ht) ht = count_infix_tel_file(token, &param, 0);
+                else     ht = count_infix_tel_file(token, &param, ht);
+                token = strtok(NULL, ",");
             }
         }
         fclose(fp);

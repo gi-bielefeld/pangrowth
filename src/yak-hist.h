@@ -20,7 +20,7 @@
 
 #define ch_eq(a, b) ((a)>>SUF == (b)>>SUF) // lower 8 bits for counts; higher bits for k-mer
 #define ch_hash(a) ((a)>>SUF)
-KHASHL_MAP_INIT(, hashtable_kmer_t, ht, uint64_t, int32_t, ch_hash, ch_eq)
+KHASHL_MAP_INIT(, hashtable_kmer_t, ht, uint64_t, int64_t, ch_hash, ch_eq)
 
 
 typedef struct {
@@ -63,10 +63,19 @@ int hat_insert_kmers(multi_hat_kmer_s *h, int n, const uint64_t *a) {
         //khint_t k = ht_put(g->h, a[j]&(~mask), &absent);
         khint_t k = ht_put(g->h, a[j], &absent);
         if (absent) ++n_ins;
-        if (((uint32_t)(kh_val(g->h, k)&MASK_GENOME) >> BITS_GENOME) != ID_GENOME) {
-            kh_val(g->h, k) = ((kh_val(g->h, k)+1) & (~MASK_GENOME)) | 
-                              (ID_GENOME << BITS_GENOME);
+        int64_t val = kh_val(g->h, k);
+        uint32_t last_g = (val & MASK_GENOME) >> BITS_GENOME;
+        uint32_t intra  = (val & MASK_INTRA)  >> (2 * BITS_GENOME);
+        if (last_g != ID_GENOME) {
+            val  = (val & MASK_COUNT);
+            val |= (1ULL << (2 * BITS_GENOME));
+            val |= ((uint64_t)ID_GENOME << BITS_GENOME);
+            if (MIN_COUNT == 1) val++;
+        } else if (intra < (uint32_t)MIN_COUNT) {
+            val += (1ULL << (2 * BITS_GENOME));
+            if (intra + 1 == (uint32_t)MIN_COUNT) val++;
         }
+        kh_val(g->h, k) = val;
 	}
 	return n_ins;
 }
@@ -278,13 +287,14 @@ void output_hist_kmer(int argc, char *argv[]){
 	param_t opt;
 	ketopt_t o = KETOPT_INIT;
 	param_init(&opt);
-	while ((c = ketopt(&o, argc, argv, 1, "k:s:K:t:i:b", 0)) >= 0) {
+	while ((c = ketopt(&o, argc, argv, 1, "k:s:K:t:i:bc:", 0)) >= 0) {
 		if (c == 'k') opt.k = atoi(o.arg);
 		else if (c == 's') opt.suf = atoi(o.arg);
 		else if (c == 'K') opt.chunk_size = atoi(o.arg);
 		else if (c == 't') opt.n_thread = atoi(o.arg);
 		else if (c == 'b') opt.canonical = false;
 		else if (c == 'i') opt.filelist = o.arg;
+		else if (c == 'c') opt.min_count = atoi(o.arg);
 	}
 
 	if (argc - o.ind < 1 && !opt.filelist) {
@@ -295,6 +305,7 @@ void output_hist_kmer(int argc, char *argv[]){
 		fprintf(stderr, "  -i PATH    file containing a list of fasta files on each line\n");
 		fprintf(stderr, "  -b         turn off transformation into canonical [%d]\n", opt.canonical);
 		fprintf(stderr, "  -s INT     suffix size for k-mer [%d]\n", opt.n_thread);
+		fprintf(stderr, "  -c INT     min k-mer count within a file to consider it present [1]\n");
 		//fprintf(stderr, "  -K INT     chunk size [100m]\n");
 		return;
 	}
@@ -311,9 +322,11 @@ void output_hist_kmer(int argc, char *argv[]){
     }
     ID_GENOME = 1;
     BITS_GENOME = ceil(log2(NUM_GENOMES+1));
-    MASK_COUNT  = ((1 << BITS_GENOME) - 1);
-    MASK_GENOME = ((1 << BITS_GENOME) - 1) << (BITS_GENOME);
+    MASK_COUNT  = (1ULL << BITS_GENOME) - 1;
+    MASK_GENOME = MASK_COUNT << BITS_GENOME;
+    MASK_INTRA  = 7ULL << (2 * BITS_GENOME);
     TOTAL_BITS  = BITS_GENOME*2;
+    MIN_COUNT   = opt.min_count;
     SUF = opt.suf;
 
     fprintf(stderr, "Number of genomes:\t%d\n", NUM_GENOMES);
@@ -334,11 +347,12 @@ void output_hist_kmer(int argc, char *argv[]){
 
         while ((getline(&line, &len, fp)) != -1) {
             chomp(line);
-            if (h) {
-                ID_GENOME++;
-                h = count_kmer_file(line, &opt, h);
-            } else {
-                h = count_kmer_file(line, &opt, 0);
+            if (h) ID_GENOME++;
+            char *token = strtok(line, ",");
+            while (token != NULL) {
+                if (!h) h = count_kmer_file(token, &opt, 0);
+                else    h = count_kmer_file(token, &opt, h);
+                token = strtok(NULL, ",");
             }
         }
         fclose(fp);

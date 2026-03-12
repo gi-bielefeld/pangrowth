@@ -18,8 +18,10 @@ uint32_t ID_GENOME;
 int NUM_GENOMES;
 int TOTAL_BITS;
 int BITS_GENOME;
-int MASK_COUNT; 
-int MASK_GENOME;
+uint64_t MASK_COUNT;
+uint64_t MASK_GENOME;
+uint64_t MASK_INTRA;
+int MIN_COUNT;
 int SUF;
 
 //*** utils ***/
@@ -82,6 +84,7 @@ typedef struct {
 	int32_t n_thread;
     bool canonical;
 	int64_t chunk_size;
+    int32_t min_count;
     char* filelist;
 } param_t;
 
@@ -92,6 +95,7 @@ void param_init(param_t *options) {
 	options->n_thread = 4;
 	options->canonical = true;
 	options->chunk_size = 10000000;
+	options->min_count = 1;
 }
 
 uint32_t count_fasta(char* filelist) {

@@ -20,7 +20,10 @@ typedef struct {
     uint16_t edges[16];
     uint8_t last_edge;
     uint16_t last_genome;
-    uint16_t sigma; 
+    uint16_t sigma;
+    uint8_t  intra_left[4];
+    uint8_t  intra_right[4];
+    uint16_t intra_genome;
 } infix_storage_s;
 #define infix_eq(a, b) ((a) == (b))
 #define infix_hash(a) ((a))
@@ -79,23 +82,32 @@ int hat_insert_infix(multi_hat_infix_s *ht, int n, const uint64_t *a) {
         khint_t z = hti_put(h, infix, &absent);
         //printf("%s\n", bits2kmer(kp1mer,k+1)); 
         //printf("%s %d\n", bits2kmer(infix,k+1), absent);
-        if (absent) { 
+        if (absent) {
             n_ins++;
-            memset(kh_val(h,z).edges, 0, 16*sizeof(uint16_t));
-            kh_val(h,z).last_edge = combined_nt;
-            kh_val(h,z).edges[kh_val(h,z).last_edge]++;
-            kh_val(h,z).last_genome = ID_GENOME;
-            kh_val(h,z).sigma = 1;
-        } else if (kh_val(h,z).last_genome == ID_GENOME && 
-                   kh_val(h,z).last_edge != combined_nt && 
-                   kh_val(h,z).last_edge != 255) {
-            kh_val(h,z).edges[kh_val(h,z).last_edge]--;
-            kh_val(h,z).last_edge = 255;
-        } else if (kh_val(h,z).last_genome != ID_GENOME) {
-            kh_val(h,z).last_edge = combined_nt;
-            kh_val(h,z).edges[kh_val(h,z).last_edge]++;
-            kh_val(h,z).last_genome = ID_GENOME;
-            kh_val(h,z).sigma++;
+            memset(&kh_val(h,z), 0, sizeof(infix_storage_s));
+            kh_val(h,z).last_edge    = 255;
+            kh_val(h,z).intra_genome = (uint16_t)ID_GENOME;
+        }
+        if (kh_val(h,z).intra_genome != (uint16_t)ID_GENOME) {
+            memset(kh_val(h,z).intra_left,  0, 4);
+            memset(kh_val(h,z).intra_right, 0, 4);
+            kh_val(h,z).intra_genome = (uint16_t)ID_GENOME;
+        }
+        if (kh_val(h,z).intra_left[first_nt]  < (uint8_t)MIN_COUNT) kh_val(h,z).intra_left[first_nt]++;
+        if (kh_val(h,z).intra_right[last_nt]  < (uint8_t)MIN_COUNT) kh_val(h,z).intra_right[last_nt]++;
+        if (kh_val(h,z).intra_left[first_nt]  >= (uint8_t)MIN_COUNT &&
+            kh_val(h,z).intra_right[last_nt]  >= (uint8_t)MIN_COUNT) {
+            if (kh_val(h,z).last_genome == ID_GENOME &&
+                kh_val(h,z).last_edge != combined_nt &&
+                kh_val(h,z).last_edge != 255) {
+                kh_val(h,z).edges[kh_val(h,z).last_edge]--;
+                kh_val(h,z).last_edge = 255;
+            } else if (kh_val(h,z).last_genome != ID_GENOME) {
+                kh_val(h,z).last_edge = combined_nt;
+                kh_val(h,z).edges[kh_val(h,z).last_edge]++;
+                kh_val(h,z).last_genome = ID_GENOME;
+                kh_val(h,z).sigma++;
+            }
         }
         //printf("%p %s(%d) %d %d\n", &kh_val(h,z), bits2kmer(kh_val(h,z).last_edge, 2), kh_val(h,z).last_edge, kh_val(h,z).last_genome, kh_val(h,z).sigma);
 	}
@@ -380,7 +392,7 @@ void output_hist_infix(int argc, char *argv[]){
 	param_t param;
 	ketopt_t options = KETOPT_INIT;
 	param_init(&param);
-	while ((c = ketopt(&options, argc, argv, 1, "k:s:K:t:i:bTD", 0)) >= 0) {
+	while ((c = ketopt(&options, argc, argv, 1, "k:s:K:t:i:bTDc:", 0)) >= 0) {
 		if (c == 'k') param.k = atoi(options.arg);
 		else if (c == 's') param.suf = atoi(options.arg);
 		else if (c == 'K') param.chunk_size = atoi(options.arg);
@@ -389,6 +401,7 @@ void output_hist_infix(int argc, char *argv[]){
 		else if (c == 'i') param.filelist = options.arg;
 		else if (c == 'T') use_telemor = true;
 		else if (c == 'D') debug = true;
+		else if (c == 'c') param.min_count = atoi(options.arg);
 	}
 
 	if (argc - options.ind < 1 && !param.filelist) {
@@ -400,6 +413,7 @@ void output_hist_infix(int argc, char *argv[]){
 		fprintf(stderr, "  -b         turn off transformation into canonical [%d]\n", param.canonical);
 		fprintf(stderr, "  -T         consider telomers breaking unitigs [%d]\n", false);
 		fprintf(stderr, "  -s INT     suffix size for k-mer [%d]\n", param.suf);
+		fprintf(stderr, "  -c INT     min k-mer count to consider a (k+1)-mer [%d]\n", param.min_count);
 		//fprintf(stderr, "  -K INT     chunk size [100m]\n");
 		return;
 	}
@@ -425,6 +439,7 @@ void output_hist_infix(int argc, char *argv[]){
     MASK_GENOME = ((1 << BITS_GENOME) - 1) << (BITS_GENOME);
     TOTAL_BITS  = BITS_GENOME*2;
     SUF = param.suf;
+    MIN_COUNT = param.min_count;
 
     fprintf(stderr, "Number of genomes:\t%d\n", NUM_GENOMES);
     fprintf(stderr, "Number of threads:\t%d\n", param.n_thread);
@@ -445,11 +460,12 @@ void output_hist_infix(int argc, char *argv[]){
 
         while ((getline(&line, &len, fp)) != -1) {
             chomp(line);
-            if (ht) {
-                ID_GENOME++;
-                ht = count_infix_file(line, &param, ht);
-            } else {
-                ht = count_infix_file(line, &param, 0);
+            if (ht) ID_GENOME++;
+            char *token = strtok(line, ",");
+            while (token != NULL) {
+                if (!ht) ht = count_infix_file(token, &param, 0);
+                else     ht = count_infix_file(token, &param, ht);
+                token = strtok(NULL, ",");
             }
         }
         fclose(fp);
