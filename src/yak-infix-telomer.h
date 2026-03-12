@@ -466,7 +466,7 @@ static void *worker_pipe_infix_tel(void *data, int step, void *in) { // callback
 		}
 		p->ht->tot += n_ins;
 		free(s->buf);
-        fprintf(stderr, "[M %d/%d] processed %d sequences; %ld distinct %d-mers in the hash table\n", s->n, ID_GENOME, NUM_GENOMES, (long)p->ht->tot, p->param->k-1);
+        fprintf(stderr, "[M %d/%d] processed %d sequences; %ld distinct %d-mers in the hash table\n", ID_GENOME, NUM_GENOMES, s->n, (long)p->ht->tot, p->param->k-1);
         
         //Adding telomers
         hat_insert_infix_tel_telomer(s->p->ht, true, s->buf_tel_left.n,s->buf_tel_left.a);
