@@ -1,80 +1,52 @@
 //https://github.com/lh3/kmer-cnt
+#ifndef kmer_hash_H
+#define kmer_hash_H
+#include <stdio.h>
+#include <stdlib.h>
+#include <assert.h>
+#include <zlib.h>
+#include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <math.h>
 #include "khashl.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <assert.h>
 #include "kthread.h"
 #include "ketopt.h"
+#include "kmer.h"
+#include "kseq.h"
 
-#define CALLOC(ptr, len) ((ptr) = (__typeof__(ptr))calloc((len), sizeof(*(ptr))))
-#define MALLOC(ptr, len) ((ptr) = (__typeof__(ptr))malloc((len) * sizeof(*(ptr))))
-#define REALLOC(ptr, len) ((ptr) = (__typeof__(ptr))realloc((ptr), (len) * sizeof(*(ptr))))
-
+///*** hash table kmer ***/
 //#define MAX_KMER     31
-#define N_COUNTS     8192
-#define MAX_COUNT    ((1<<TOTAL_BITS)-1)
-
-int ID_GENOME = 1;
-int NUM_GENOMES;
-int TOTAL_BITS;
-int BITS_GENOME;
-int MASK_COUNT; 
-int MASK_GENOME;
-int SUF;
 
 #define ch_eq(a, b) ((a)>>SUF == (b)>>SUF) // lower 8 bits for counts; higher bits for k-mer
 #define ch_hash(a) ((a)>>SUF)
-KHASHL_MAP_INIT(, ht_t, ht, uint64_t, int32_t, ch_hash, ch_eq)
+KHASHL_MAP_INIT(, hashtable_kmer_t, ht, uint64_t, int64_t, ch_hash, ch_eq)
+
 
 typedef struct {
-	int32_t k;
-	int32_t suf;
-	int32_t n_thread;
-    bool canonical;
-	int64_t chunk_size;
-    char* filelist;
-} copt_t;
-
-typedef struct {
-	ht_t *h;
-} ch1_t;
+	hashtable_kmer_t *h;
+} hat_kmer_s;
 
 typedef struct {
 	int k, suf, n_hash, n_shift;
 	uint64_t tot;
-	ch1_t *h;
-} ch_t;
-
-
-static inline uint64_t hash64(uint64_t key, uint64_t mask) // invertible integer hash function
-{
-	key = (~key + (key << 21)) & mask; // key = (key << 21) - key - 1;
-	key = key ^ key >> 24;
-	key = ((key + (key << 3)) + (key << 8)) & mask; // key * 265
-	key = key ^ key >> 14;
-	key = ((key + (key << 2)) + (key << 4)) & mask; // key * 21
-	key = key ^ key >> 28;
-	key = (key + (key << 31)) & mask;
-	return key;
-}
+	hat_kmer_s *h;
+} multi_hat_kmer_s;
 
 /*** hash table ***/
-ch_t *ch_init(int k, int suf) {
-	ch_t *h;
+multi_hat_kmer_s *ch_init(int k, int suf) {
+	multi_hat_kmer_s *h;
 	int i;
 	//if (suf < TOTAL_BITS) return 0; //suf must be greater or equal (here is equal)
-	CALLOC(h, 1);
+	mcalloc(h, 1);
 	h->k = k, h->suf = suf;
-	CALLOC(h->h, 1<<h->suf);
+	mcalloc(h->h, 1<<h->suf);
 	for (i = 0; i < 1<<h->suf; ++i)
 		h->h[i].h = ht_init();
 	return h;
 }
 
-void ch_destroy(ch_t *h) {
+void ch_destroy(multi_hat_kmer_s *h) {
 	int i;
 	if (h == 0) return;
 	for (i = 0; i < 1<<h->suf; ++i)
@@ -82,125 +54,51 @@ void ch_destroy(ch_t *h) {
 	free(h->h); free(h);
 }
 
-int ch_insert_list(ch_t *h, int n, const uint64_t *a) {
+int hat_insert_kmers(multi_hat_kmer_s *h, int n, const uint64_t *a) {
 	if (n == 0) return 0;
 	int mask = (1<<h->suf) - 1, n_ins = 0;
-	ch1_t *g = &h->h[a[0]&mask];
+	hat_kmer_s *g = &h->h[a[0]&mask];
 	for (int j = 0; j < n; ++j) {
 		int absent;
         //khint_t k = ht_put(g->h, a[j]&(~mask), &absent);
         khint_t k = ht_put(g->h, a[j], &absent);
         if (absent) ++n_ins;
-        if (((kh_val(g->h, k)&MASK_GENOME) >> BITS_GENOME) != ID_GENOME) {
-            kh_val(g->h, k) = ((kh_val(g->h, k)+1) & (~MASK_GENOME)) | 
-                              (ID_GENOME << BITS_GENOME);
+        int64_t val = kh_val(g->h, k);
+        uint32_t last_g = (val & MASK_GENOME) >> BITS_GENOME;
+        uint32_t intra  = (val & MASK_INTRA)  >> (2 * BITS_GENOME);
+        if (last_g != ID_GENOME) {
+            val  = (val & MASK_COUNT);
+            val |= (1ULL << (2 * BITS_GENOME));
+            val |= ((uint64_t)ID_GENOME << BITS_GENOME);
+            if (MIN_COUNT == 1) val++;
+        } else if (intra < (uint32_t)MIN_COUNT) {
+            val += (1ULL << (2 * BITS_GENOME));
+            if (intra + 1 == (uint32_t)MIN_COUNT) val++;
         }
+        kh_val(g->h, k) = val;
 	}
 	return n_ins;
-}
-
-/*** generate histogram ***/
-typedef struct {
-	uint64_t c[N_COUNTS];
-} buf_cnt_t;
-
-typedef struct {
-	const ch_t *h;
-	buf_cnt_t *cnt;
-} hist_aux_t;
-
-static void worker_hist(void *data, long i, int tid) // callback for kt_for()
-{
-	hist_aux_t *a = (hist_aux_t*)data;
-	uint64_t *cnt = a->cnt[tid].c;
-	ht_t *g = a->h->h[i].h;
-	khint_t k;
-	for (k = 0; k < kh_end(g); ++k)
-		if (kh_exist(g, k))
-            ++cnt[kh_val(g, k)&MASK_COUNT];
-}
-
-void ch_hist(const ch_t *h, int64_t cnt[N_COUNTS], int n_thread) {
-	hist_aux_t a;
-	int i, j;
-	a.h = h;
-	memset(cnt, 0, (NUM_GENOMES+1) * sizeof(uint64_t));
-	CALLOC(a.cnt, n_thread); // count is divide for number of threads
-	kt_for(n_thread, worker_hist, &a, 1<<h->suf);
-	for (i = 0; i <= NUM_GENOMES; ++i) cnt[i] = 0; //This will be the total amount
-	for (j = 0; j < n_thread; ++j)
-		for (i = 0; i <= NUM_GENOMES; ++i)
-			cnt[i] += a.cnt[j].c[i]; //Combine all
-	free(a.cnt);
-}
-
-
-void chomp(char *str) {
-    size_t len = strlen(str);
-
-    if (len == 0) return;
-
-    size_t last_idx = len - 1;
-    if( str[last_idx] == '\n' ) {
-        str[last_idx] = '\0';
-    }
-}
-
-/****************
- * From count.c *
- ****************/
-#include <zlib.h>
-#include <string.h>
-#include "kseq.h" // FASTA/Q parser
-KSEQ_INIT(gzFile, gzread)
-
-unsigned char seq_nt4_table[256] = { // translate ACGT to 0123
-	0, 1, 2, 3,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,
-	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,
-	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,
-	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,
-	4, 0, 4, 1,  4, 4, 4, 2,  4, 4, 4, 4,  4, 4, 4, 4,
-	4, 4, 4, 4,  3, 3, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,
-	4, 0, 4, 1,  4, 4, 4, 2,  4, 4, 4, 4,  4, 4, 4, 4,
-	4, 4, 4, 4,  3, 3, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,
-	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,
-	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,
-	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,
-	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,
-	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,
-	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,
-	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,
-	4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4,  4, 4, 4, 4
-};
-
-void copt_init(copt_t *o) {
-	memset(o, 0, sizeof(copt_t));
-	o->k = 17;
-	o->suf = 10;
-	o->n_thread = 4;
-	o->canonical = true;
-	o->chunk_size = 10000000;
 }
 
 typedef struct {
 	int n, m;
 	uint64_t n_ins;
 	uint64_t *a;
-} ch_buf_t;
+} buf_kmer_s;
 
 // insert a k-mer $y to a linear buffer
-static inline void ch_insert_buf(ch_buf_t *buf, int suf, uint64_t y) {
+static inline void kmer_insert_buf(buf_kmer_s *buf, int suf, uint64_t y) {
     uint64_t y_suf = y & ((1<<suf) - 1);
-	ch_buf_t *b = &buf[y_suf];
+	buf_kmer_s *b = &buf[y_suf];
 	if (b->n == b->m) {
 		b->m = b->m < 8? 8 : b->m + (b->m>>1);
-		REALLOC(b->a, b->m);
+		mrealloc(b->a, b->m);
 	}
 	b->a[b->n++] = y;
 }
 
 // insert canonical k-mers in $seq to linear buffer $buf
-static void count_seq_buf_can(ch_buf_t *buf, int k, int suf, int len, const char *seq){ 
+static void count_seq_buf_can(buf_kmer_s *buf, int k, int suf, int len, const char *seq){ 
 	int i, l;
 	uint64_t x[2], mask = (1ULL<<k*2) - 1, shift = (k - 1) * 2;
 	for (i = l = 0, x[0] = x[1] = 0; i < len; ++i) {
@@ -210,14 +108,14 @@ static void count_seq_buf_can(ch_buf_t *buf, int k, int suf, int len, const char
 			x[1] = x[1] >> 2 | (uint64_t)(3 - c) << shift;  // reverse strand
 			if (++l >= k) { // we find a k-mer
 				uint64_t y = x[0] < x[1]? x[0] : x[1];      // Canonicals!
-				ch_insert_buf(buf, suf, hash64(y, mask));
+				kmer_insert_buf(buf, suf, hash64(y, mask));
 			}
 		} else l = 0, x[0] = x[1] = 0; // if there is an "N", restart
 	}
 }
 
 // insert k-mers in $seq to linear buffer $buf
-static void count_seq_buf(ch_buf_t *buf, int k, int suf, int len, const char *seq){ 
+static void count_seq_buf(buf_kmer_s *buf, int k, int suf, int len, const char *seq){ 
 	int i, l;
 	uint64_t x, mask = (1ULL<<k*2) - 1;
 	for (i = l = 0, x = 0; i < len; ++i) {
@@ -225,49 +123,49 @@ static void count_seq_buf(ch_buf_t *buf, int k, int suf, int len, const char *se
 		if (c < 4) { // not an "N" base
 			x = (x << 2 | c) & mask;                  // forward strand
 			if (++l >= k) { // we find a k-mer
-				ch_insert_buf(buf, suf, hash64(x, mask));
+				kmer_insert_buf(buf, suf, hash64(x, mask));
 			}
 		} else l = 0, x = 0; // if there is an "N", restart
 	}
 }
 
 typedef struct { // global data structure for kt_pipeline()
-	const copt_t *opt;
+	const param_t *opt;
 	kseq_t *ks;
-	ch_t *h;
-} pldat_t;
+	multi_hat_kmer_s *h;
+} pldat_kmer_s;
 
 typedef struct { // data structure for each step in kt_pipeline()
-	pldat_t *p;
+	pldat_kmer_s *p;
 	int n, m, sum_len, nk;
 	int *len;
 	char **seq;
-	ch_buf_t *buf;
-} stepdat_t;
+	buf_kmer_s *buf;
+} stepdat_kmer_s;
 
-static void worker_for(void *data, long i, int tid) { // callback for kt_for()
-	stepdat_t *s = (stepdat_t*)data;
-	ch_buf_t *buf = &s->buf[i];
-	ch_t *h = s->p->h;
-	buf->n_ins += ch_insert_list(h, buf->n, buf->a);
+static void worker_for_kmer_insert_list(void *data, long i, int tid) { // callback for kt_for()
+	stepdat_kmer_s *s = (stepdat_kmer_s*)data;
+	buf_kmer_s *buf = &s->buf[i];
+	multi_hat_kmer_s *h = s->p->h;
+	buf->n_ins += hat_insert_kmers(h, buf->n, buf->a);
 }
 
-static void *worker_pipeline(void *data, int step, void *in) { // callback for kt_pipeline()
-	pldat_t *p = (pldat_t*)data;
+static void *worker_pipe_kmer(void *data, int step, void *in) { // callback for kt_pipeline()
+	pldat_kmer_s *p = (pldat_kmer_s*)data;
 	if (step == 0) { // step 1: read a block of sequences
 		int ret;
-		stepdat_t *s;
-		CALLOC(s, 1);
+		stepdat_kmer_s *s;
+		mcalloc(s, 1);
 		s->p = p;
 		while ((ret = kseq_read(p->ks)) >= 0) {
 			int l = p->ks->seq.l;
 			if (l < p->opt->k) continue;
 			if (s->n == s->m) {
 				s->m = s->m < 16? 16 : s->m + (s->n>>1);
-				REALLOC(s->len, s->m);
-				REALLOC(s->seq, s->m);
+				mrealloc(s->len, s->m);
+				mrealloc(s->seq, s->m);
 			}
-			MALLOC(s->seq[s->n], l);
+			mmalloc(s->seq[s->n], l);
 			memcpy(s->seq[s->n], p->ks->seq.s, l);
 			s->len[s->n++] = l;
 			s->sum_len += l;
@@ -278,13 +176,13 @@ static void *worker_pipeline(void *data, int step, void *in) { // callback for k
 		if (s->sum_len == 0) free(s);
 		else return s;
 	} else if (step == 1) { // step 2: extract k-mers
-		stepdat_t *s = (stepdat_t*)in;
+		stepdat_kmer_s *s = (stepdat_kmer_s*)in;
 		int i, n = 1<<p->opt->suf, m;
-		CALLOC(s->buf, n);
+		mcalloc(s->buf, n);
 		m = (int)(s->nk * 1.2 / n) + 1;
 		for (i = 0; i < n; ++i) {
 			s->buf[i].m = m;
-			MALLOC(s->buf[i].a, m);
+			mmalloc(s->buf[i].a, m);
 		}
         if (p->opt->canonical) {
             for (i = 0; i < s->n; ++i) {
@@ -300,74 +198,103 @@ static void *worker_pipeline(void *data, int step, void *in) { // callback for k
 		free(s->seq); free(s->len);
 		return s;
 	} else if (step == 2) { // step 3: insert k-mers to hash table
-		stepdat_t *s = (stepdat_t*)in;
+		stepdat_kmer_s *s = (stepdat_kmer_s*)in;
 		int i, n = 1<<p->opt->suf;
 		uint64_t n_ins = 0;
-        kt_for(p->opt->n_thread, worker_for, s, n);
+        kt_for(p->opt->n_thread, worker_for_kmer_insert_list, s, n);
 		for (i = 0; i < n; ++i) {
 			n_ins += s->buf[i].n_ins;
 			free(s->buf[i].a);
 		}
 		p->h->tot += n_ins;
 		free(s->buf);
-		fprintf(stderr, "[M] processed %d sequences; %ld distinct k-mers in the hash table\n", s->n, (long)p->h->tot);
+		fprintf(stderr, "[M %d/%d] processed %d sequences; %ld distinct k-mers in the hash table\n", ID_GENOME, NUM_GENOMES, s->n, (long)p->h->tot);
 		free(s);
 	}
 	return 0;
 }
 
-ch_t *count(const char *fn, const copt_t *opt, ch_t *h) {
-	pldat_t pl;
+multi_hat_kmer_s *count_kmer(const char *fn, const param_t *opt, multi_hat_kmer_s *h) {
+	pldat_kmer_s pl;
 	gzFile fp;
 	if ((fp = gzopen(fn, "r")) == 0) return 0;
 	pl.ks = kseq_init(fp);
 	pl.opt = opt;
     pl.h = (!h) ? ch_init(opt->k, opt->suf) : h;
-	kt_pipeline(3, worker_pipeline, &pl, 3);
+	kt_pipeline(3, worker_pipe_kmer, &pl, 3);
 	kseq_destroy(pl.ks);
 	gzclose(fp);
 	return pl.h;
 }
 
-ch_t *count_file(const char *fn1, const copt_t *opt, ch_t *h2) {
-	ch_t *h;
-	h = count(fn1, opt, h2); 
+multi_hat_kmer_s *count_kmer_file(const char *fn1, const param_t *opt, multi_hat_kmer_s *h2) {
+	multi_hat_kmer_s *h;
+	h = count_kmer(fn1, opt, h2); 
 	return h;
 }
 
-uint32_t count_fasta(char* filelist) {
-    FILE * fp;
-    char * line = NULL;
-    uint32_t num_lines=0;
-    size_t len = 0;
+/*** generate histogram ***/
+typedef struct {
+	uint64_t c[N_COUNTS];
+} buf_hist_t;
 
-    fp = fopen(filelist, "r");
-    if (fp == NULL) {
-        fprintf(stderr, "Could not open file: %s",filelist);
-        exit(EXIT_FAILURE);
-    }
+typedef struct {
+	const multi_hat_kmer_s *h;
+	buf_hist_t *cnt;
+} hist_kmer_s;
 
-    while ((getline(&line, &len, fp)) != -1) num_lines++;
-    fclose(fp);
-
-    if (line) free(line);
-    return num_lines;
+static void worker_hist_kmer(void *data, long i, int tid) // callback for kt_for()
+{
+	hist_kmer_s *a = (hist_kmer_s*)data;
+	uint64_t *cnt = a->cnt[tid].c;
+	hashtable_kmer_t *g = a->h->h[i].h;
+	khint_t k;
+	for (k = 0; k < kh_end(g); ++k)
+		if (kh_exist(g, k))
+            ++cnt[kh_val(g, k)&MASK_COUNT];
 }
 
-void output_hist(int argc, char *argv[]){
-	ch_t *h = 0;
+void hist_kmer(const multi_hat_kmer_s *h, int64_t cnt[N_COUNTS], int n_thread) {
+	hist_kmer_s a;
+	int i, j;
+	a.h = h;
+	memset(cnt, 0, (NUM_GENOMES+1) * sizeof(uint64_t));
+	mcalloc(a.cnt, n_thread); // count_kmer is divide for number of threads
+	kt_for(n_thread, worker_hist_kmer, &a, 1<<h->suf);
+	for (i = 0; i <= NUM_GENOMES; ++i) cnt[i] = 0; //This will be the total amount
+	for (j = 0; j < n_thread; ++j)
+		for (i = 0; i <= NUM_GENOMES; ++i)
+			cnt[i] += a.cnt[j].c[i]; //Combine all
+	free(a.cnt);
+}
+
+void print_kmer_debug(multi_hat_kmer_s * ht) {
+    int i;
+    uint32_t j;
+	for (i = 0; i < 1<<ht->suf; ++i) {
+        hashtable_kmer_t *g = ht->h[i].h;
+        for (j = 0; j < kh_end(g); ++j)
+            if (kh_exist(g, j))
+                printf("%s %d\n", bits2kmer(kh_key(g, j), ht->k), kh_val(g,j)&MASK_COUNT);
+                //printf("[%d] %s %d\n", i, bits2kmer(kh_key(g, j), ht->k), kh_val(g,j)&MASK_COUNT);
+    }
+}
+
+void output_hist_kmer(int argc, char *argv[]){
+	multi_hat_kmer_s *h = 0;
 	int c;
 	int i;
-	copt_t opt;
+	param_t opt;
 	ketopt_t o = KETOPT_INIT;
-	copt_init(&opt);
-	while ((c = ketopt(&o, argc, argv, 1, "k:s:K:t:b:i:", 0)) >= 0) {
+	param_init(&opt);
+	while ((c = ketopt(&o, argc, argv, 1, "k:s:K:t:i:bc:", 0)) >= 0) {
 		if (c == 'k') opt.k = atoi(o.arg);
 		else if (c == 's') opt.suf = atoi(o.arg);
 		else if (c == 'K') opt.chunk_size = atoi(o.arg);
 		else if (c == 't') opt.n_thread = atoi(o.arg);
 		else if (c == 'b') opt.canonical = false;
 		else if (c == 'i') opt.filelist = o.arg;
+		else if (c == 'c') opt.min_count = atoi(o.arg);
 	}
 
 	if (argc - o.ind < 1 && !opt.filelist) {
@@ -378,6 +305,7 @@ void output_hist(int argc, char *argv[]){
 		fprintf(stderr, "  -i PATH    file containing a list of fasta files on each line\n");
 		fprintf(stderr, "  -b         turn off transformation into canonical [%d]\n", opt.canonical);
 		fprintf(stderr, "  -s INT     suffix size for k-mer [%d]\n", opt.n_thread);
+		fprintf(stderr, "  -c INT     min k-mer count within a file to consider it present [1]\n");
 		//fprintf(stderr, "  -K INT     chunk size [100m]\n");
 		return;
 	}
@@ -392,15 +320,20 @@ void output_hist(int argc, char *argv[]){
     } else {
         NUM_GENOMES = argc - o.ind;
     }
+    ID_GENOME = 1;
     BITS_GENOME = ceil(log2(NUM_GENOMES+1));
-    MASK_COUNT  = ((1 << BITS_GENOME) - 1);
-    MASK_GENOME = ((1 << BITS_GENOME) - 1) << (BITS_GENOME);
+    MASK_COUNT  = (1ULL << BITS_GENOME) - 1;
+    MASK_GENOME = MASK_COUNT << BITS_GENOME;
+    MASK_INTRA  = 7ULL << (2 * BITS_GENOME);
     TOTAL_BITS  = BITS_GENOME*2;
+    MIN_COUNT   = opt.min_count;
     SUF = opt.suf;
 
-    fprintf(stderr, "Number of genomes: %d\n", NUM_GENOMES);
-    fprintf(stderr, "Number of bits per genome: %d\n", BITS_GENOME);
-    fprintf(stderr, "Suffix size for k-mer: %d\n", SUF);
+    fprintf(stderr, "Number of genomes:\t%d\n", NUM_GENOMES);
+    fprintf(stderr, "Number of threads:\t%d\n", opt.n_thread);
+    fprintf(stderr, "Bits per genome:\t%d\n", BITS_GENOME);
+    fprintf(stderr, "Bits per suffix:\t%d\n", SUF);
+    fprintf(stderr, "Counting %s k-mers\n", opt.canonical ? "canonical" : "forward");
     if (opt.filelist) {
         FILE * fp;
         char * line = NULL;
@@ -414,28 +347,32 @@ void output_hist(int argc, char *argv[]){
 
         while ((getline(&line, &len, fp)) != -1) {
             chomp(line);
-            if (h) {
-                ID_GENOME++;
-                h = count_file(line, &opt, h);
-            } else {
-                h = count_file(line, &opt, 0);
+            if (h) ID_GENOME++;
+            char *token = strtok(line, ",");
+            while (token != NULL) {
+                if (!h) h = count_kmer_file(token, &opt, 0);
+                else    h = count_kmer_file(token, &opt, h);
+                token = strtok(NULL, ",");
             }
         }
         fclose(fp);
         if (line) free(line);
     } else {
-        h = count_file(argv[o.ind], &opt, 0);
+        h = count_kmer_file(argv[o.ind], &opt, 0);
         for (i = 1; i < NUM_GENOMES; i++){
             ID_GENOME++;
-            h = count_file(argv[o.ind+i], &opt, h);
+            h = count_kmer_file(argv[o.ind+i], &opt, h);
         }
     }
 	fprintf(stderr, "[M::%s] %ld distinct k-mers\n", __func__, (long)h->tot);
 
 	int64_t cnt[N_COUNTS];
 
-	ch_hist(h, cnt, opt.n_thread);
+    //print_kmer_debug(h);
+
+	hist_kmer(h, cnt, opt.n_thread);
 	//for (i = 1; i <= NUM_GENOMES; ++i) printf("%d\t%lld\n", i,(long long)cnt[i]);
 	for (i = 1; i <= NUM_GENOMES; ++i) printf("%lld\n", (long long)cnt[i]);
 	ch_destroy(h);
 }
+#endif

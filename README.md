@@ -37,12 +37,15 @@ Parmigiani, L., Wittler, R., Stoye, J.,: [Revisiting pangenome openness with _k_
 ```bash
 git clone https://github.com/gi-bielefeld/pangrowth
 cd pangrowth
+mkdir build
+cd build
+cmake ..
 make 
 ```
 
 To plot the results we need the following python libraries: numpy, pandas, matplotlib, scipy and searbon. You can install them with:
 ```
-pip install -r dependencies.txt
+pip install -r requirements.txt
 ```
 
 ## Usage

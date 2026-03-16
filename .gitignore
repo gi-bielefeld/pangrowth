@@ -14,6 +14,8 @@
 **/.snakemake
 **/plots
 **/.cache
+**/build
+**/test
 benchmark
 .aider*
 test/
