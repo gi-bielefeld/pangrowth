@@ -4,21 +4,18 @@
     <img src="png/logo.png" width="512" alt="logo_pangrowth">
 </p>
 
-`pangrowth` is an efficient tool designed for genomic researchers to predict the [openness of a pangenome](https://doi.org/10.1101/2022.11.15.516472 ) and
-estimate the **core** genome size. This tool is capable of analyzing fasta
-sequences using **_k_-mers**, as well as other genomic elements such as genes, CDS,
-ORFs, provided as either a **frequency histogram** or a **pan-matrix** (with columns
-representing genomes and rows representing items; see `panmatrix_ecoli_n50.txt`
-for an example).
+`pangrowth` is an efficient tool designed for genomic researchers to predict the [openness of a pangenome](https://doi.org/10.1101/2022.11.15.516472 ), 
+estimate the **core** genome size and the pangenome diversiy using [Hill numbers](https://en.wikipedia.org/wiki/Diversity_index ). 
+
+This tool is capable of analyzing fasta sequences using **_k_-mers**, as well
+as any other genomic elements such as genes, CDS, ORFs, as long as it is provided as either a **frequency histogram** or a **pan-matrix** (with columns representing genomes and rows representing items; see `panmatrix_ecoli_n50.txt` for an example).
 
 ### Key features
 
 - **_k_-mer counting**: utilizes a modified version of [yak](https://github.com/lh3/yak) to count _k_-mers
-- **growth/core calculation**: computes the _exact_ expected genomic growth/core size quadratically in the number of genomes 
-
-### Publications
-
-Parmigiani, L., Wittler, R., Stoye, J.,: [Revisiting pangenome openness with _k_-mers](https://peercommunityjournal.org/articles/10.24072/pcjournal.415/  ). PCI Comp & Biol.  (2024).
+- **growth/core calculation**: computes the _exact_ expected genomic growth/core size quadratically in the number of genomes
+- **hill numbers**: compute Hill numbers from frequency list
+- **colored compacted de Bruijn graph (cdbg)**: estimates pangenome diversity of the ccdbg using Hill numbers, by combining _k_-mer and infix equivalents histograms
 
 ## Table of Contents
 <!--ts-->
@@ -29,7 +26,9 @@ Parmigiani, L., Wittler, R., Stoye, J.,: [Revisiting pangenome openness with _k_
          * [Histogram from fasta files](#histogram-from-fasta-files)
          * [Pangenome growth (from histogram or pan-matrix)](#pangenome-growth-from-histogram-or-pan-matrix)
          * [Pangenome core (from histogram or pan-matrix)](#pangenome-core-from-histogram-or-pan-matrix)
-      * [Contact](#contact) 
+         * [Hill numbers from k-mer histogram](#hill-numbers-from-k-mer-histogram)
+         * [Colored compacted de Bruijn graph](#colored-compacted-de-bruijn-graph)
+      * [Contact](#contact)
 <!--te-->
 
 ## Install
@@ -139,6 +138,50 @@ the number of genomes.
 <p align="center">
     <img src="png/core.png" width="700" alt="k-mer core size of multiple ecoli">
 </p>
+
+### Hill numbers from k-mer histogram
+
+Hill numbers measure pangenome diversity (species richness, exponential entropy, inverse Simpson index) from a _k_-mer frequency histogram:
+
+```bash
+./pangrowth hill -p 30 data/hist_ecoli_n50.txt
+```
+
+- `-p INT` sets the number of sample points (default: 30); use `-p 0` to output all points
+- `-f FILE` reads sample points from a file (one integer per line), overriding `-p`
+
+The output is a tab-separated table with columns: `fit`, `m`, `richness`, `exp_entropy`, `inv_gini_simp`, where `fit` is `int` (interpolation), `obs` (observed), or `ext` (extrapolation) and `m` is the number of genomes.
+
+### Colored compacted de Bruijn graph
+
+The colored compacted de Bruijn graph (cdbg) compacts non-branching path of _k_-mers into **unitigs**. Its diversity can be estimated by combining a _k_-mer histogram with an **infix equivalents histogram**.
+
+**Step 1**: generate the infix equivalents histogram from fasta files:
+
+```bash
+./pangrowth hist -k 17 -t 12 data/fa/*.fna.gz > hist.txt
+./pangrowth hist_infix -k 17 -t 12 -T data/fa/*.fna.gz > hist_infix.txt
+```
+
+Options for `hist_infix` are the same as for `hist`:
+- `-k INT` _k_-mer size (default: 17)
+- `-t INT` number of worker threads (default: 4)
+- `-i PATH` file containing a list of fasta files (one per line)
+- `-b` turn off canonical _k_-mer transformation
+- `-T` account for telomeres breaking unitigs
+- `-c INT` minimum _k_-mer count to consider a (_k_+1)-mer (default: 1)
+
+**Step 2**: compute Hill numbers for the cdbg using both histograms:
+
+```bash
+./pangrowth hill_cdbg hist.txt hist_infix.txt
+```
+
+The output format is identical to `hill`: a tab-separated table with columns `fit`, `m`, `richness`, `exp_entropy`, `inv_gini_simp`.
+
+## Publication
+
+Parmigiani, L., Wittler, R., Stoye, J.,: [Revisiting pangenome openness with _k_-mers](https://peercommunityjournal.org/articles/10.24072/pcjournal.415/  ). PCI Comp & Biol.  (2024).
 
 ## Contact
 

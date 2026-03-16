@@ -9,6 +9,7 @@
 **/compile_commands.json
 **/pangrowth
 **/hist.txt
+**/hist_infix.txt
 **/pangenome_growth.txt
 **/Francisella_tularensis
 **/.snakemake
