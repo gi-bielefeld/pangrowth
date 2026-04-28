@@ -148,9 +148,11 @@ void output_kmer_core(int argc, char *argv[]){
     }
     ID_GENOME = 1;
     BITS_GENOME = ceil(log2(NUM_GENOMES+1));
-    MASK_COUNT  = ((1 << BITS_GENOME) - 1);
-    MASK_GENOME = ((1 << BITS_GENOME) - 1) << (BITS_GENOME);
+    MASK_COUNT  = (1ULL << BITS_GENOME) - 1;
+    MASK_GENOME = MASK_COUNT << BITS_GENOME;
+    MASK_INTRA  = 7ULL << (2 * BITS_GENOME);
     TOTAL_BITS  = BITS_GENOME*2;
+    MIN_COUNT   = opt.min_count;
     SUF = opt.suf;
 
     uint64_t abs_quorum = std::ceil(((double)NUM_GENOMES)*quorum);
@@ -159,7 +161,7 @@ void output_kmer_core(int argc, char *argv[]){
     fprintf(stderr, "Bits per genome:\t%d\n", BITS_GENOME);
     fprintf(stderr, "Bits per suffix:\t%d\n", SUF);
     fprintf(stderr, "Counting %s k-mers\n", opt.canonical ? "canonical" : "forward");
-    fprintf(stderr, "Quorum %0.2f [%d/%d]\n", quorum, abs_quorum, NUM_GENOMES);//, NUM_GENOMES);
+    fprintf(stderr, "Quorum %0.2f [%lu/%d]\n", quorum, (unsigned long)abs_quorum, NUM_GENOMES);//, NUM_GENOMES);
 
     if (opt.filelist) {
         FILE * fp;
@@ -174,11 +176,12 @@ void output_kmer_core(int argc, char *argv[]){
 
         while ((getline(&line, &len, fp)) != -1) {
             chomp(line);
-            if (h) {
-                ID_GENOME++;
-                h = count_kmer_file(line, &opt, h);
-            } else {
-                h = count_kmer_file(line, &opt, 0);
+            if (h) ID_GENOME++;
+            char *token = strtok(line, ",");
+            while (token != NULL) {
+                if (!h) h = count_kmer_file(token, &opt, 0);
+                else    h = count_kmer_file(token, &opt, h);
+                token = strtok(NULL, ",");
             }
         }
         fclose(fp);
@@ -215,7 +218,11 @@ void output_kmer_core(int argc, char *argv[]){
 
         while ((getline(&line, &len, fp)) != -1) {
             chomp(line);
-            core_count = count_kmer_core_file(line, &opt, core_ht, abs_quorum);
+            char *token = strtok(line, ",");
+            while (token != NULL) {
+                core_count = count_kmer_core_file(token, &opt, core_ht, abs_quorum);
+                token = strtok(NULL, ",");
+            }
             ID_GENOME++;
         }
         fclose(fp);

@@ -435,8 +435,8 @@ void output_hist_infix(int argc, char *argv[]){
     }
     ID_GENOME = 1;
     BITS_GENOME = ceil(log2(NUM_GENOMES+1));
-    MASK_COUNT  = ((1 << BITS_GENOME) - 1);
-    MASK_GENOME = ((1 << BITS_GENOME) - 1) << (BITS_GENOME);
+    MASK_COUNT  = (1ULL << BITS_GENOME) - 1;
+    MASK_GENOME = MASK_COUNT << BITS_GENOME;
     TOTAL_BITS  = BITS_GENOME*2;
     SUF = param.suf;
     MIN_COUNT = param.min_count;

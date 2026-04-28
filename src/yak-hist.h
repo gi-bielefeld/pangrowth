@@ -62,6 +62,7 @@ int hat_insert_kmers(multi_hat_kmer_s *h, int n, const uint64_t *a) {
 		int absent;
         //khint_t k = ht_put(g->h, a[j]&(~mask), &absent);
         khint_t k = ht_put(g->h, a[j], &absent);
+        if (absent) kh_val(g->h, k) = 0;
         if (absent) ++n_ins;
         int64_t val = kh_val(g->h, k);
         uint32_t last_g = (val & MASK_GENOME) >> BITS_GENOME;
@@ -275,7 +276,7 @@ void print_kmer_debug(multi_hat_kmer_s * ht) {
         hashtable_kmer_t *g = ht->h[i].h;
         for (j = 0; j < kh_end(g); ++j)
             if (kh_exist(g, j))
-                printf("%s %d\n", bits2kmer(kh_key(g, j), ht->k), kh_val(g,j)&MASK_COUNT);
+                printf("%s %lu\n", bits2kmer(kh_key(g, j), ht->k), (unsigned long)(kh_val(g,j)&MASK_COUNT));
                 //printf("[%d] %s %d\n", i, bits2kmer(kh_key(g, j), ht->k), kh_val(g,j)&MASK_COUNT);
     }
 }

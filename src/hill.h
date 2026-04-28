@@ -83,7 +83,9 @@ void generate_sample_points(param_hill_t &params) {
 
     if (num_points > end) {
         params.points.reserve(end);
-        for (int i = 1; i <= end; i++) { params.points[i-1] = i; }
+        for (int i = 1; i <= end; i++) {
+            params.points.push_back(i);
+        }
         return;
     }
 
@@ -102,7 +104,9 @@ void generate_sample_points(param_hill_t &params) {
         }
     }
 
-    params.points[num_points-1] = int(floor(end));
+    if (!params.points.empty()) {
+        params.points.back() = int(floor(end));
+    }
 
     if (params.points.size() != num_points) {
         cout << "Warn: outputting " << params.points.size() << " instead of " << num_points << '\n' << flush;
