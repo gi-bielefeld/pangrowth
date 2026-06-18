@@ -7,6 +7,7 @@
 #include <omp.h>
 #include <fstream> // std::ifstream
 #include <cstdlib> // For atoi, exit
+#include <limits>
 #include "Rmath.h"
 #include "ketopt.h"
 
@@ -25,6 +26,9 @@ struct param_hill_t{
     //genomes
     uint32_t num_genomes = -1;
     char *kmer_hist_filename;
+    // cdbg interpolation only
+    bool use_bernoulli_unimer = false;
+    int bernoulli_exact_tail = 0;
 };
 
 struct param_hill_cdbg_t : param_hill_t { 
@@ -233,6 +237,104 @@ est_h_unimer(vector<double> &hbar, int i, int n, int m) {
     return tot;
 }
 
+double static inline
+log_choose_fast(const vector<double>& log_fact, int n, int k) {
+    if (k < 0 || k > n) return -std::numeric_limits<double>::infinity();
+    return log_fact[n] - log_fact[k] - log_fact[n-k];
+}
+
+vector<double> static inline
+make_log_factorials(int n) {
+    vector<double> log_fact(n + 1, 0.0);
+    for (int i = 1; i <= n; ++i) log_fact[i] = log_fact[i - 1] + log((double)i);
+    return log_fact;
+}
+
+void static inline
+log_add_exp(double& acc, double x) {
+    if (std::isinf(x) && x < 0) return;
+    if (std::isinf(acc) && acc < 0) {
+        acc = x;
+    } else if (acc < x) {
+        acc = x + log1p(exp(acc - x));
+    } else {
+        acc = acc + log1p(exp(x - acc));
+    }
+}
+
+double static inline
+est_h_unimer_exact_i(vector<double> &hbar,
+                    int i,
+                    int n,
+                    int m,
+                    const vector<double>& log_fact,
+                    double lchoose_nm) {
+    double log_total = -std::numeric_limits<double>::infinity();
+    int max_sigma = min(n, n - m + i);
+
+    for (int sigma = i; sigma <= max_sigma; ++sigma) {
+        double lchoose_n_sigma_m_i = log_choose_fast(log_fact, n - sigma, m - i);
+        for (int j = i; j <= sigma; ++j) {
+            double h = hbar[(sigma * (sigma - 1) / 2) + j];
+            if (h <= 0.0) continue;
+            double log_term = log(h)
+                + log_choose_fast(log_fact, j, i)
+                + lchoose_n_sigma_m_i
+                - lchoose_nm;
+            log_add_exp(log_total, log_term);
+        }
+    }
+
+    if (std::isinf(log_total) && log_total < 0) return 0.0;
+    return exp(log_total);
+}
+
+void static inline
+est_h_unimer_bernoulli_hybrid(vector<double> &hbar,
+                              int n,
+                              int m,
+                              int exact_tail,
+                              const vector<double>& log_fact,
+                              vector<double>& h_hat_unimer) {
+    fill(h_hat_unimer.begin(), h_hat_unimer.end(), 0.0);
+
+    double p = (double)m / (double)n;
+    double log_p = log(p);
+    double log_q = log1p(-p);
+    vector<double> log_A(n + 1, -std::numeric_limits<double>::infinity());
+
+    for (int j = 1; j <= n; ++j) {
+        double log_sum = -std::numeric_limits<double>::infinity();
+        for (int sigma = j; sigma <= n; ++sigma) {
+            double h = hbar[(sigma * (sigma - 1) / 2) + j];
+            if (h <= 0.0) continue;
+            log_add_exp(log_sum, log(h) + (double)(sigma - j) * log_q);
+        }
+        log_A[j] = log_sum;
+    }
+
+    for (int i = 1; i <= m; ++i) {
+        double log_total = -std::numeric_limits<double>::infinity();
+        for (int j = i; j <= n; ++j) {
+            if (std::isinf(log_A[j]) && log_A[j] < 0) continue;
+            double log_term = log_A[j]
+                + log_choose_fast(log_fact, j, i)
+                + (double)i * log_p
+                + (double)(j - i) * log_q;
+            log_add_exp(log_total, log_term);
+        }
+        if (!(std::isinf(log_total) && log_total < 0)) h_hat_unimer[i] = exp(log_total);
+    }
+
+    if (exact_tail > 0) {
+        int start_i = max(1, m - exact_tail + 1);
+        double lchoose_nm = log_choose_fast(log_fact, n, m);
+        for (int i = start_i; i <= m; ++i) {
+            h_hat_unimer[i] = est_h_unimer_exact_i(hbar, i, n, m, log_fact, lchoose_nm);
+        }
+    }
+}
+
 //double static inline 
 //est_h_unimer(vector<double> &hbar, int i, int n, int m) {
 //    double tot = 0;
@@ -284,40 +386,52 @@ print_hill(int m, vector<double> &h) {
 }
 
 void 
-hill_cdbg(vector<double> &h_kmer, vector<double> &h_infix_eq, vector<int> &points) {
-    double n = h_kmer.size()-1;
+hill_cdbg(vector<double> &h_kmer,
+          vector<double> &h_infix_eq,
+          vector<int> &points,
+          int bernoulli_exact_tail = -1) {
+    int n = (int)h_kmer.size()-1;
     int m = points[points.size()-1];
     size_t p = 0;
+    bool use_bernoulli_unimer = bernoulli_exact_tail >= 0;
     double sum_h = 0;
     for (int i = 1; i <= n; ++i) {
         sum_h += h_kmer[i];
     }
     //1-based index
     vector<double> h_hat_unitig(m+1);
+    vector<double> h_hat_unimer(m+1);
     vector<double> h_unimer(n+1);
+    vector<double> log_fact;
+    if (use_bernoulli_unimer) log_fact = make_log_factorials(n);
     for (int i = 1; i <= n; i++) h_unimer[i] = h_infix_eq[((i+1)*i/2)];
 
     printf("fit\tm\trichness\texp_entropy\tinv_gini_simp\n");
     //** Interpolation **//
-    while (points[p] < n) {
+    while (p < points.size() && points[p] < n) {
         int m = points[p++];
         
-        double lchoose_nm = lchoose(n, m);
+        double lchoose_nm = use_bernoulli_unimer ? log_choose_fast(log_fact, n, m) : lchoose(n, m);
+        if (use_bernoulli_unimer) {
+            est_h_unimer_bernoulli_hybrid(h_infix_eq, n, m, bernoulli_exact_tail, log_fact, h_hat_unimer);
+        }
+
         for (int i = 1; i <= m; i++) {
-            h_hat_unitig[i] = est_h(h_kmer, i, n, m, lchoose_nm) - est_h_unimer(h_infix_eq, i, n, m);
+            double h_unimer_i = use_bernoulli_unimer ? h_hat_unimer[i] : est_h_unimer(h_infix_eq, i, n, m);
+            h_hat_unitig[i] = est_h(h_kmer, i, n, m, lchoose_nm) - h_unimer_i;
         }
         printf("int\t%d\t", m);
         print_hill(m, h_hat_unitig);
     }
 
     //** Observed **//
-    if (points[p] == n) {
+    if (p < points.size() && points[p] == n) {
         p++;
         printf("obs\t%d\t", (int)n);
         for (int i = 1; i <= n; i++) {
             h_hat_unitig[i] = h_kmer[i] - h_unimer[i];
         }
-        print_hill(m, h_hat_unitig);
+        print_hill(n, h_hat_unitig);
     }
 
     //** Extrapolation **//
@@ -326,18 +440,18 @@ hill_cdbg(vector<double> &h_kmer, vector<double> &h_infix_eq, vector<int> &point
     double Q2 = h_kmer[2];
     double Q0hat;
     if (Q2 == 0) {
-        Q0hat = ((n - 1)/n) * Q1*(Q1 - 1)/2;
+        Q0hat = ((n - 1)/(double)n) * Q1*(Q1 - 1)/2;
     } else {
-        Q0hat = ((n - 1)/n) * Q1*Q1/(2*Q2);
+        Q0hat = ((n - 1)/(double)n) * Q1*Q1/(2*Q2);
     }
     // Unseen uni-mers
     double Q1_unimer = h_infix_eq[1];
     double Q2_unimer = h_infix_eq[3];
     double Q0hat_unimer;
     if (Q2_unimer == 0) {
-        Q0hat_unimer = ((n - 1)/n) * Q1_unimer*(Q1_unimer - 1)/2;
+        Q0hat_unimer = ((n - 1)/(double)n) * Q1_unimer*(Q1_unimer - 1)/2;
     } else {
-        Q0hat_unimer = ((n - 1)/n) * Q1_unimer*Q1_unimer/(2*Q2_unimer);
+        Q0hat_unimer = ((n - 1)/(double)n) * Q1_unimer*Q1_unimer/(2*Q2_unimer);
     }
     // Broken uni-mers
     double Q_unimer = 0;
@@ -429,11 +543,15 @@ param_hill_t parse_common_cli(int argc, char *argv[]){
 
     int c;
     ketopt_t o = KETOPT_INIT;
-    while ((c = ketopt(&o, argc, argv, 1, "p:f:", 0)) >= 0) {
+    while ((c = ketopt(&o, argc, argv, 1, "p:f:B:", 0)) >= 0) {
         if (c == 'p') params.num_points = atoi(o.arg); 
         if (c == 'f') {
             params.points_file = o.arg;
             params.use_points_file = true;
+        }
+        if (c == 'B') {
+            params.use_bernoulli_unimer = true;
+            params.bernoulli_exact_tail = atoi(o.arg);
         }
     }
 
@@ -455,6 +573,11 @@ param_hill_t parse_common_cli(int argc, char *argv[]){
 param_hill_t cli_hill(int argc, char *argv[]) {
     param_hill_t params = parse_common_cli(argc, argv);
 
+    if (params.use_bernoulli_unimer) {
+        fprintf(stderr, "Error: -B is only supported by hill_cdbg.\n");
+        params.err = true;
+    }
+
     //input_hist_kmer
     if (argc - params.o_index != 1) {
         fprintf(stderr, "Error: Expected 1 file argument (k-mer histogram).\n");
@@ -475,6 +598,11 @@ param_hill_cdbg_t cli_hill_cdbg(int argc, char *argv[]) {
     param_hill_cdbg_t params;
     static_cast<param_hill_t&>(params) =  parse_common_cli(argc, argv);
 
+    if (params.bernoulli_exact_tail < 0) {
+        fprintf(stderr, "Error: -B must be >= 0.\n");
+        params.err = true;
+    }
+
     //input_hist_kmer
     if (argc - params.o_index != 2) {
         fprintf(stderr, "Error: Expected 2 files argument (k-mer and infix).\n");
@@ -483,7 +611,7 @@ param_hill_cdbg_t cli_hill_cdbg(int argc, char *argv[]) {
 
     //helper
     if (params.err) {
-        fprintf(stderr, "Usage: pangrowth %s [-p <num_points>, -f <file_points>] <hist_kmer> <hist_infix>\n", argv[0]);
+        fprintf(stderr, "Usage: pangrowth %s [-p <num_points>, -f <file_points>, -B <exact_tail>] <hist_kmer> <hist_infix>\n", argv[0]);
         exit(EXIT_FAILURE);
     }
 
@@ -506,5 +634,9 @@ void output_hill_cdbg(int argc, char *argv[]) {
     vector<double> h_infix_eq = read_histogram_1based_index(params.infix_hist_filename);
     update_params(params, h_kmer);
     sample_points(params);
-    hill_cdbg(h_kmer, h_infix_eq, params.points);
+    if (params.use_bernoulli_unimer) {
+        hill_cdbg(h_kmer, h_infix_eq, params.points, params.bernoulli_exact_tail);
+    } else {
+        hill_cdbg(h_kmer, h_infix_eq, params.points);
+    }
 }
