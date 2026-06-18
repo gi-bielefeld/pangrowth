@@ -4,6 +4,7 @@
 #include "yak-infix-telomer.h"
 #include "yak-core.h"
 #include "hill.h"
+#include "ggcat-infix.h"
 
 using namespace std;
 
@@ -17,6 +18,8 @@ int main(int argc, char** argv) {
         fprintf(stderr, "       Outputs the pangenome average core from the fasta files\n");
         fprintf(stderr, "  hist_infix:\n");
         fprintf(stderr, "       Outputs the histogram of infix equivalents (k+1)-mers from a list of fasta files\n");
+        fprintf(stderr, "  hist_infix_ggcat:\n");
+        fprintf(stderr, "       Outputs the infix equivalents histogram from a colored ggcat k-mer graph\n");
         fprintf(stderr, "  growth:\n");
         fprintf(stderr, "       Outputs the pangenome growth graph from the histogram (or panmatrix)\n");
         fprintf(stderr, "  hill:\n");
@@ -39,6 +42,8 @@ int main(int argc, char** argv) {
         output_kmer_core(argc-1, argv+sizeof(char));
     } else if(strcmp(argv[1], "hist_infix") == 0) { 
         output_hist_infix(argc-1, argv+sizeof(char));
+    } else if(strcmp(argv[1], "hist_infix_ggcat") == 0) { 
+        output_hist_infix_ggcat(argc-1, argv+sizeof(char));
     } else if(strcmp(argv[1], "growth") == 0) { 
         output_pangenome(argc-1, argv+sizeof(char));
     } else if(strcmp(argv[1], "hill") == 0) { 

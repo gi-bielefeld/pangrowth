@@ -33,14 +33,30 @@ as any other genomic elements such as genes, CDS, ORFs, as long as it is provide
 
 ## Install
 
+Default build:
+
 ```bash
 git clone https://github.com/gi-bielefeld/pangrowth
 cd pangrowth
-mkdir build
-cd build
-cmake ..
-make 
+cmake -S . -B build
+cmake --build build -j 8
 ```
+
+This builds the main `pangrowth` executable. The default build does not link
+the ggcat C++ API. The executable is `build/pangrowth`; either call it by that
+path, add it to `PATH`, or run examples from inside the build directory.
+
+Optional ggcat-enabled build:
+
+```bash
+./scripts/build_ggcat_cpp_api.sh
+
+cmake -S . -B build-ggcat -DPANGROWTH_WITH_GGCAT=ON
+cmake --build build-ggcat -j 8
+```
+
+The helper script downloads ggcat and builds the static C++ API libraries with
+`cargo`. The ggcat-enabled executable is `build-ggcat/pangrowth`.
 
 To plot the results we need the following python libraries: numpy, pandas, matplotlib, scipy and searbon. You can install them with:
 ```
@@ -156,7 +172,9 @@ The output is a tab-separated table with columns: `fit`, `m`, `richness`, `exp_e
 
 The colored compacted de Bruijn graph (cdbg) compacts non-branching path of _k_-mers into **unitigs**. Its diversity can be estimated by combining a _k_-mer histogram with an **infix equivalents histogram**.
 
-**Step 1**: generate the infix equivalents histogram from fasta files:
+**Step 1**: generate the infix equivalents histogram.
+
+From fasta files:
 
 ```bash
 ./pangrowth hist -k 17 -t 12 data/fa/*.fna.gz > hist.txt
@@ -170,6 +188,21 @@ Options for `hist_infix` are the same as for `hist`:
 - `-b` turn off canonical _k_-mer transformation
 - `-T` account for telomeres breaking unitigs
 - `-c INT` minimum _k_-mer count to consider a (_k_+1)-mer (default: 1)
+
+From a colored ggcat _k_-mer graph:
+
+```bash
+ggcat build -c -k 17 -d inputs.tsv -o graph_k17.fa -t ggcat_tmp -j 8 --min-multiplicity 1
+./pangrowth hist_infix_ggcat -k 17 -t 1 graph_k17.fa > hist_infix.txt
+```
+
+The `inputs.tsv` file must contain one color name and one fasta path per line,
+separated by a tab. The ggcat build used here currently requires `-j` to be a
+power of two (eg, `1`, `2`, `4`, `8`...).
+
+`hist_infix_ggcat` computes the graph-induced infix equivalents histogram from
+one colored compacted de Bruijn graph. For an edge candidate $axb$, its color
+set is computed as $C(ax) \cap C(xb)$ from the adjacent _k_-mer color sets.
 
 **Step 2**: compute Hill numbers for the cdbg using both histograms:
 

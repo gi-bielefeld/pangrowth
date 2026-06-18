@@ -1,4 +1,5 @@
 **/build
+**/build-ggcat
 **/.thrash
 *.bfg_colors
 *.gfa
@@ -15,7 +16,6 @@
 **/.snakemake
 **/plots
 **/.cache
-**/build
 **/test
 benchmark
 .aider*
