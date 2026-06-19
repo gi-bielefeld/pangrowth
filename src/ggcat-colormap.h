@@ -1,7 +1,9 @@
 #pragma once
 
 #include <stdint.h>
-#include <algorithm>
+#include <cassert>
+#include <cstdio>
+#include <cstring>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -10,7 +12,43 @@
 #ifdef PANGROWTH_WITH_GGCAT
 #include <ggcat.hh>
 static void pangrowth_ggcat_silent_messages(ggcat::MessageLevel, const char*) {}
+
+#ifndef NDEBUG
+static inline bool ggcat_colors_are_sorted_unique(ggcat::Slice<uint32_t> cols) {
+    for (size_t i = 1; i < cols.size; ++i) {
+        if (cols.data[i - 1] >= cols.data[i]) return false;
+    }
+    return true;
+}
 #endif
+#endif
+
+struct GgcatColormapHeader {
+    size_t colors;
+    size_t color_subsets;
+};
+
+static inline uint64_t ggcat_read_le64(const uint8_t *p) {
+    uint64_t x = 0;
+    for (int i = 7; i >= 0; --i) x = (x << 8) | (uint64_t)p[i];
+    return x;
+}
+
+static inline GgcatColormapHeader ggcat_read_colormap_header(const std::string& colormap_path) {
+    uint8_t header[56];
+    FILE *fp = std::fopen(colormap_path.c_str(), "rb");
+    if (fp == 0) throw std::runtime_error("could not open ggcat colormap file");
+    size_t n = std::fread(header, 1, sizeof(header), fp);
+    std::fclose(fp);
+    if (n != sizeof(header)) throw std::runtime_error("could not read ggcat colormap header");
+    if (std::memcmp(header, "GGCAT_CMAP_RNLEN", 16) != 0) {
+        throw std::runtime_error("unsupported ggcat colormap format");
+    }
+    GgcatColormapHeader h;
+    h.colors = (size_t)ggcat_read_le64(header + 32);
+    h.color_subsets = (size_t)ggcat_read_le64(header + 40);
+    return h;
+}
 
 class GgcatColorCache {
 public:
@@ -29,10 +67,13 @@ public:
         config.messages_callback = pangrowth_ggcat_silent_messages;
         instance_ = ggcat::GGCATInstance::create(config);
         colormap_path_ = ggcat::GGCATInstance::get_colormap_file(graph_path_);
-        num_colors_ = ggcat::GGCATInstance::dump_colors(colormap_path_).size();
+        GgcatColormapHeader header = ggcat_read_colormap_header(colormap_path_);
+        num_colors_ = header.colors;
+        num_color_subsets_ = header.color_subsets;
 #else
         (void)threads_;
         num_colors_ = 0;
+        num_color_subsets_ = 0;
         throw std::runtime_error("pangrowth was built without ggcat API support");
 #endif
     }
@@ -61,6 +102,10 @@ public:
         return num_colors_;
     }
 
+    size_t num_color_subsets() const {
+        return num_color_subsets_;
+    }
+
     void reserve(size_t n) {
         cache_.reserve(n);
         cardinality_cache_.reserve(n);
@@ -81,9 +126,10 @@ public:
             missing.size(),
             true,
             [&](uint32_t subset, ggcat::Slice<uint32_t> cols) {
+#ifndef NDEBUG
+                assert(ggcat_colors_are_sorted_unique(cols));
+#endif
                 std::vector<uint32_t> v(cols.data, cols.data + cols.size);
-                std::sort(v.begin(), v.end());
-                v.erase(std::unique(v.begin(), v.end()), v.end());
                 cache_[subset].swap(v);
             });
 #else
@@ -125,6 +171,7 @@ private:
     std::string colormap_path_;
     size_t threads_;
     size_t num_colors_;
+    size_t num_color_subsets_;
     std::unordered_map<uint32_t, std::vector<uint32_t> > cache_;
     std::unordered_map<uint32_t, size_t> cardinality_cache_;
 #ifdef PANGROWTH_WITH_GGCAT

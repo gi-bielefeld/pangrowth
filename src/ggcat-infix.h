@@ -8,9 +8,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <stdexcept>
-#include <string>
-#include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -40,15 +37,10 @@ static inline uint64_t ggcat_revcomp_bits(uint64_t x, int len) {
     return y;
 }
 
-static inline bool ggcat_encode_window(const char *seq, int pos, int len, uint64_t *out) {
-    uint64_t x = 0;
-    for (int i = 0; i < len; ++i) {
-        int c = seq_nt4_table[(uint8_t)seq[pos + i]];
-        if (c >= 4) return false;
-        x = (x << 2) | (uint64_t)c;
-    }
-    *out = x;
-    return true;
+static inline uint64_t ggcat_encode_base(const char *seq, int pos) {
+    int c = seq_nt4_table[(uint8_t)seq[pos]];
+    if (c >= 4) throw std::runtime_error("ggcat unitig contains a non-ACGT base");
+    return (uint64_t)c;
 }
 
 struct GgcatCanonicalEdge {
@@ -81,61 +73,100 @@ struct GgcatEndpointRecord {
     uint8_t base;
 };
 
-static inline void ggcat_add_left_endpoint(std::vector<GgcatEndpointRecord>& records,
-                                           uint64_t kmer,
-                                           int k,
-                                           uint32_t sid) {
-    uint64_t infix = kmer & ggcat_mask_bits(k - 1);
-    uint8_t a = (uint8_t)((kmer >> (2 * (k - 1))) & 3ULL);
-    uint64_t rc = ggcat_revcomp_bits(infix, k - 1);
-    if (infix < rc) {
-        records.push_back(GgcatEndpointRecord{infix, sid, 0, a});
-    } else {
-        records.push_back(GgcatEndpointRecord{rc, sid, 1, ggcat_comp_base(a)});
+static inline void ggcat_add_unitig_boundary_endpoints(std::vector<GgcatEndpointRecord>& records,
+                                                       const char *seq,
+                                                       int len,
+                                                       int k,
+                                                       uint32_t first_sid,
+                                                       uint32_t last_sid) {
+    int infix_len = k - 1;
+    uint64_t infix_mask = ggcat_mask_bits(infix_len);
+    uint64_t first_infix = 0;
+    uint8_t first_base = 0;
+    for (int i = 0; i < infix_len; ++i) {
+        uint64_t c = ggcat_encode_base(seq, i);
+        if (i == 0) first_base = (uint8_t)c;
+        first_infix = (first_infix << 2) | c;
     }
-}
 
-static inline void ggcat_add_right_endpoint(std::vector<GgcatEndpointRecord>& records,
-                                            uint64_t kmer,
-                                            int k,
-                                            uint32_t sid) {
-    uint64_t infix = kmer >> 2;
-    uint8_t b = (uint8_t)(kmer & 3ULL);
-    uint64_t rc = ggcat_revcomp_bits(infix, k - 1);
-    if (infix < rc) {
-        records.push_back(GgcatEndpointRecord{infix, sid, 1, b});
+    uint8_t right_base = (uint8_t)ggcat_encode_base(seq, infix_len);
+    uint64_t rc = ggcat_revcomp_bits(first_infix, infix_len);
+    if (first_infix < rc) {
+        records.push_back(GgcatEndpointRecord{first_infix, first_sid, 1, right_base});
     } else {
-        records.push_back(GgcatEndpointRecord{rc, sid, 0, ggcat_comp_base(b)});
+        records.push_back(GgcatEndpointRecord{rc, first_sid, 0, ggcat_comp_base(right_base)});
     }
-}
 
-static inline uint64_t ggcat_pair_key(uint32_t a, uint32_t b) {
-    if (a > b) std::swap(a, b);
-    return ((uint64_t)a << 32) | (uint64_t)b;
+    int left_pos = len - k;
+    int last_infix_pos = left_pos + 1;
+    uint8_t left_base = left_pos == 0 ? first_base : (uint8_t)ggcat_encode_base(seq, left_pos);
+    uint64_t last_infix = first_infix;
+    if (last_infix_pos > 0) {
+        if (last_infix_pos <= infix_len / 2) {
+            for (int i = 0; i < last_infix_pos; ++i) {
+                int next_pos = infix_len + i;
+                uint64_t c = next_pos == infix_len ? right_base : ggcat_encode_base(seq, next_pos);
+                last_infix = ((last_infix << 2) & infix_mask) | c;
+            }
+        } else {
+            last_infix = 0;
+            for (int i = 0; i < infix_len; ++i) {
+                last_infix = (last_infix << 2) | ggcat_encode_base(seq, last_infix_pos + i);
+            }
+        }
+    }
+
+    rc = ggcat_revcomp_bits(last_infix, infix_len);
+    if (last_infix < rc) {
+        records.push_back(GgcatEndpointRecord{last_infix, last_sid, 0, left_base});
+    } else {
+        records.push_back(GgcatEndpointRecord{rc, last_sid, 1, ggcat_comp_base(left_base)});
+    }
 }
 
 static inline uint64_t ggcat_hist_idx(uint64_t j, uint64_t sigma) {
     return (sigma * (sigma - 1)) / 2 + j - 1;
 }
 
-static std::vector<std::pair<uint32_t, uint32_t> > ggcat_parse_color_runs(const std::string& header) {
-    std::vector<std::pair<uint32_t, uint32_t> > runs;
-    size_t pos = 0;
-    while ((pos = header.find("C:", pos)) != std::string::npos) {
-        pos += 2;
-        char *end = 0;
-        uint32_t sid = (uint32_t)strtoul(header.c_str() + pos, &end, 16);
-        if (end == header.c_str() + pos || *end != ':') continue;
-        uint32_t count = (uint32_t)strtoul(end + 1, &end, 10);
-        runs.push_back(std::make_pair(sid, count));
-        pos = (size_t)(end - header.c_str());
-    }
-    return runs;
+static inline bool ggcat_is_hex(uint8_t c) {
+    return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
 }
 
-static inline void ggcat_sort_unique(std::vector<uint32_t>& xs) {
-    std::sort(xs.begin(), xs.end());
-    xs.erase(std::unique(xs.begin(), xs.end()), xs.end());
+static inline uint32_t ggcat_hex_value(uint8_t c) {
+    if (c <= '9') return (uint32_t)(c - '0');
+    if (c <= 'F') return (uint32_t)(c - 'A' + 10);
+    return (uint32_t)(c - 'a' + 10);
+}
+
+static void ggcat_parse_color_runs_append(const char *s,
+                                          size_t n,
+                                          std::vector<std::pair<uint32_t, uint32_t> >& runs) {
+    size_t pos = 0;
+    while (pos + 2 < n) {
+        if (s[pos] != 'C' || s[pos + 1] != ':') {
+            ++pos;
+            continue;
+        }
+        pos += 2;
+
+        uint32_t sid = 0;
+        size_t sid_start = pos;
+        while (pos < n && ggcat_is_hex((uint8_t)s[pos])) {
+            sid = (sid << 4) | ggcat_hex_value((uint8_t)s[pos]);
+            ++pos;
+        }
+        if (pos == sid_start || pos >= n || s[pos] != ':') continue;
+        ++pos;
+
+        uint32_t count = 0;
+        size_t count_start = pos;
+        while (pos < n && s[pos] >= '0' && s[pos] <= '9') {
+            count = 10 * count + (uint32_t)(s[pos] - '0');
+            ++pos;
+        }
+        if (pos == count_start) continue;
+        runs.push_back(std::make_pair(sid, count));
+    }
 }
 
 static inline bool ggcat_endpoint_record_less(const GgcatEndpointRecord& a,
@@ -277,13 +308,18 @@ static void output_hist_infix_ggcat(int argc, char *argv[]) {
         fprintf(stderr, "Error: ggcat graph has no colors\n");
         exit(EXIT_FAILURE);
     }
+    size_t n_color_subsets = color_cache.num_color_subsets();
+    if (n_color_subsets == 0) {
+        fprintf(stderr, "Error: ggcat graph has no color subsets\n");
+        exit(EXIT_FAILURE);
+    }
 
     std::vector<uint64_t> hist((n_colors + 1) * n_colors / 2, 0);
-    std::unordered_map<uint32_t, uint64_t> internal_same;
-    std::unordered_map<uint64_t, uint64_t> internal_pairs;
     std::vector<GgcatEndpointRecord> endpoint_records;
-    std::vector<uint32_t> all_subset_ids;
-    std::vector<uint32_t> full_color_subset_ids;
+    std::vector<uint32_t> subset_ids(n_color_subsets);
+    for (size_t i = 0; i < n_color_subsets; ++i) subset_ids[i] = (uint32_t)i;
+    color_cache.reserve(n_color_subsets);
+    color_cache.query(subset_ids.data(), subset_ids.size());
 
     gzFile fp = gzopen(graph_path, "r");
     if (fp == 0) {
@@ -294,104 +330,66 @@ static void output_hist_infix_ggcat(int argc, char *argv[]) {
     int ret;
     uint64_t unitigs = 0, internal_edges = 0;
     uint64_t color_run_count = 0, mixed_internal_edges = 0;
+    std::vector<std::pair<uint32_t, uint32_t> > runs;
     while ((ret = kseq_read(ks)) >= 0) {
         int len = (int)ks->seq.l;
         if (len < param.k) continue;
         size_t n_kmers = (size_t)(len - param.k + 1);
 
-        std::string header;
-        if (ks->name.l) header.append(ks->name.s, ks->name.l);
-        if (ks->comment.l) {
-            header.push_back(' ');
-            header.append(ks->comment.s, ks->comment.l);
-        }
-        std::vector<std::pair<uint32_t, uint32_t> > runs = ggcat_parse_color_runs(header);
+        runs.clear();
+        if (ks->name.l) ggcat_parse_color_runs_append(ks->name.s, ks->name.l, runs);
+        if (ks->comment.l) ggcat_parse_color_runs_append(ks->comment.s, ks->comment.l, runs);
         if (runs.empty()) {
             throw std::runtime_error("ggcat unitig has no color runs; build the graph with ggcat build -c");
         }
         size_t run_kmers = 0;
         for (size_t i = 0; i < runs.size(); ++i) {
             run_kmers += runs[i].second;
-            all_subset_ids.push_back(runs[i].first);
         }
         if (run_kmers != n_kmers) {
             throw std::runtime_error("ggcat color runs do not match the number of k-mers in a unitig");
         }
         color_run_count += runs.size();
 
-        uint64_t first_kmer = 0, last_kmer = 0;
-        if (ggcat_encode_window(ks->seq.s, 0, param.k, &first_kmer)) {
-            ggcat_add_right_endpoint(endpoint_records, first_kmer, param.k, runs.front().first);
-            full_color_subset_ids.push_back(runs.front().first);
-        }
-        if (ggcat_encode_window(ks->seq.s, (int)n_kmers - 1, param.k, &last_kmer)) {
-            ggcat_add_left_endpoint(endpoint_records, last_kmer, param.k, runs.back().first);
-            full_color_subset_ids.push_back(runs.back().first);
-        }
+        ggcat_add_unitig_boundary_endpoints(endpoint_records,
+                                            ks->seq.s,
+                                            len,
+                                            param.k,
+                                            runs.front().first,
+                                            runs.back().first);
 
-        size_t offset = 0;
         for (size_t r = 0; r < runs.size(); ++r) {
             uint32_t sid = runs[r].first;
             uint32_t count = runs[r].second;
-            for (size_t i = offset; i + 1 < offset + count; ++i) {
-                uint64_t kp1mer = 0;
-                if (!ggcat_encode_window(ks->seq.s, (int)i, param.k + 1, &kp1mer)) continue;
-                GgcatCanonicalEdge ce;
-                if (!ggcat_canonical_edge(kp1mer, param.k, &ce)) continue;
-                ++internal_same[sid];
-                ++internal_edges;
+            if (count > 1) {
+                uint64_t c_count = color_cache.cardinality(sid);
+                if (c_count > 0) hist[ggcat_hist_idx(c_count, c_count)] += (uint64_t)(count - 1);
+                internal_edges += (uint64_t)(count - 1);
             }
             if (r + 1 < runs.size() && count > 0 && runs[r + 1].second > 0) {
-                size_t i = offset + count - 1;
-                uint64_t kp1mer = 0;
-                if (ggcat_encode_window(ks->seq.s, (int)i, param.k + 1, &kp1mer)) {
-                    GgcatCanonicalEdge ce;
-                    if (ggcat_canonical_edge(kp1mer, param.k, &ce)) {
-                        uint32_t next_sid = runs[r + 1].first;
-                        if (sid == next_sid) {
-                            ++internal_same[sid];
-                        } else {
-                            ++internal_pairs[ggcat_pair_key(sid, next_sid)];
-                            full_color_subset_ids.push_back(sid);
-                            full_color_subset_ids.push_back(next_sid);
-                            ++mixed_internal_edges;
-                        }
-                        ++internal_edges;
-                    }
+                uint32_t next_sid = runs[r + 1].first;
+                uint64_t c_count = 0;
+                if (sid == next_sid) {
+                    c_count = color_cache.cardinality(sid);
+                } else {
+                    c_count = intersect_size_sorted(color_cache.colors(sid), color_cache.colors(next_sid));
+                    ++mixed_internal_edges;
                 }
+                if (c_count > 0) ++hist[ggcat_hist_idx(c_count, c_count)];
+                ++internal_edges;
             }
-            offset += count;
         }
         ++unitigs;
     }
     kseq_destroy(ks);
     gzclose(fp);
 
-    ggcat_sort_unique(all_subset_ids);
-    ggcat_sort_unique(full_color_subset_ids);
-    color_cache.reserve(all_subset_ids.size());
-    color_cache.query(full_color_subset_ids.data(), full_color_subset_ids.size());
-    color_cache.query_cardinalities(all_subset_ids.data(), all_subset_ids.size());
-
     fprintf(stderr, "Read %" PRIu64 " ggcat unitigs\n", unitigs);
     fprintf(stderr, "Color runs: %" PRIu64 "\n", color_run_count);
     fprintf(stderr, "Internal edge records: %" PRIu64 "\n", internal_edges);
     fprintf(stderr, "Mixed-subset internal edge records: %" PRIu64 "\n", mixed_internal_edges);
-    fprintf(stderr, "Distinct color subsets: %zu\n", all_subset_ids.size());
-    fprintf(stderr, "Full color subsets queried: %zu\n", full_color_subset_ids.size());
+    fprintf(stderr, "Distinct color subsets: %zu\n", subset_ids.size());
     fprintf(stderr, "Endpoint records: %zu\n", endpoint_records.size());
-
-    for (std::unordered_map<uint32_t, uint64_t>::const_iterator it = internal_same.begin(); it != internal_same.end(); ++it) {
-        uint64_t c_count = color_cache.cardinality(it->first);
-        if (c_count > 0) hist[ggcat_hist_idx(c_count, c_count)] += it->second;
-    }
-
-    for (std::unordered_map<uint64_t, uint64_t>::const_iterator it = internal_pairs.begin(); it != internal_pairs.end(); ++it) {
-        uint32_t sid1 = (uint32_t)(it->first >> 32);
-        uint32_t sid2 = (uint32_t)(it->first & 0xffffffffULL);
-        uint64_t c_count = intersect_size_sorted(color_cache.colors(sid1), color_cache.colors(sid2));
-        if (c_count > 0) hist[ggcat_hist_idx(c_count, c_count)] += it->second;
-    }
 
     std::sort(endpoint_records.begin(), endpoint_records.end(), ggcat_endpoint_record_less);
     endpoint_records.erase(std::unique(endpoint_records.begin(), endpoint_records.end(), ggcat_endpoint_record_equal), endpoint_records.end());
