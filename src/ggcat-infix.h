@@ -74,36 +74,38 @@ static inline bool ggcat_canonical_edge(uint64_t kp1mer, int k, GgcatCanonicalEd
     return true;
 }
 
-struct GgcatEndpointGroup {
-    std::array<std::vector<uint32_t>, 4> left;
-    std::array<std::vector<uint32_t>, 4> right;
+struct GgcatEndpointRecord {
+    uint64_t infix;
+    uint32_t sid;
+    uint8_t side;
+    uint8_t base;
 };
 
-static inline void ggcat_push_unique(std::vector<uint32_t>& xs, uint32_t x) {
-    if (std::find(xs.begin(), xs.end(), x) == xs.end()) xs.push_back(x);
-}
-
-static inline void ggcat_add_left_endpoint(std::unordered_map<uint64_t, GgcatEndpointGroup>& groups,
-                                            uint64_t kmer, int k, uint32_t sid) {
+static inline void ggcat_add_left_endpoint(std::vector<GgcatEndpointRecord>& records,
+                                           uint64_t kmer,
+                                           int k,
+                                           uint32_t sid) {
     uint64_t infix = kmer & ggcat_mask_bits(k - 1);
     uint8_t a = (uint8_t)((kmer >> (2 * (k - 1))) & 3ULL);
     uint64_t rc = ggcat_revcomp_bits(infix, k - 1);
     if (infix < rc) {
-        ggcat_push_unique(groups[infix].left[a], sid);
+        records.push_back(GgcatEndpointRecord{infix, sid, 0, a});
     } else {
-        ggcat_push_unique(groups[rc].right[ggcat_comp_base(a)], sid);
+        records.push_back(GgcatEndpointRecord{rc, sid, 1, ggcat_comp_base(a)});
     }
 }
 
-static inline void ggcat_add_right_endpoint(std::unordered_map<uint64_t, GgcatEndpointGroup>& groups,
-                                             uint64_t kmer, int k, uint32_t sid) {
+static inline void ggcat_add_right_endpoint(std::vector<GgcatEndpointRecord>& records,
+                                            uint64_t kmer,
+                                            int k,
+                                            uint32_t sid) {
     uint64_t infix = kmer >> 2;
     uint8_t b = (uint8_t)(kmer & 3ULL);
     uint64_t rc = ggcat_revcomp_bits(infix, k - 1);
     if (infix < rc) {
-        ggcat_push_unique(groups[infix].right[b], sid);
+        records.push_back(GgcatEndpointRecord{infix, sid, 1, b});
     } else {
-        ggcat_push_unique(groups[rc].left[ggcat_comp_base(b)], sid);
+        records.push_back(GgcatEndpointRecord{rc, sid, 0, ggcat_comp_base(b)});
     }
 }
 
@@ -131,46 +133,83 @@ static std::vector<std::pair<uint32_t, uint32_t> > ggcat_parse_color_runs(const 
     return runs;
 }
 
-static std::vector<uint32_t> ggcat_expand_runs(const std::vector<std::pair<uint32_t, uint32_t> >& runs, size_t n) {
-    std::vector<uint32_t> sids;
-    sids.reserve(n);
-    for (size_t i = 0; i < runs.size(); ++i) {
-        for (uint32_t j = 0; j < runs[i].second; ++j) sids.push_back(runs[i].first);
-    }
-    if (sids.size() != n) {
-        throw std::runtime_error("ggcat color runs do not match the number of k-mers in a unitig");
-    }
-    return sids;
-}
-
-static inline void ggcat_union_intersection(const std::vector<uint32_t>& a,
-                                            const std::vector<uint32_t>& b,
-                                            std::vector<uint32_t>& out) {
-    size_t i = 0, j = 0;
-    while (i < a.size() && j < b.size()) {
-        if (a[i] == b[j]) {
-            out.push_back(a[i]);
-            ++i;
-            ++j;
-        } else if (a[i] < b[j]) {
-            ++i;
-        } else {
-            ++j;
-        }
-    }
-}
-
 static inline void ggcat_sort_unique(std::vector<uint32_t>& xs) {
     std::sort(xs.begin(), xs.end());
     xs.erase(std::unique(xs.begin(), xs.end()), xs.end());
 }
 
-static void ggcat_add_endpoint_group_to_hist(uint64_t infix,
-                                             const GgcatEndpointGroup& group,
+static inline bool ggcat_endpoint_record_less(const GgcatEndpointRecord& a,
+                                              const GgcatEndpointRecord& b) {
+    if (a.infix != b.infix) return a.infix < b.infix;
+    if (a.side != b.side) return a.side < b.side;
+    if (a.base != b.base) return a.base < b.base;
+    return a.sid < b.sid;
+}
+
+static inline bool ggcat_endpoint_record_equal(const GgcatEndpointRecord& a,
+                                               const GgcatEndpointRecord& b) {
+    return a.infix == b.infix && a.side == b.side && a.base == b.base && a.sid == b.sid;
+}
+
+struct GgcatEndpointScratch {
+    explicit GgcatEndpointScratch(size_t n_colors)
+        : words((n_colors + 63) / 64),
+          seen(words),
+          multi(words) {
+        for (int i = 0; i < 4; ++i) {
+            left[i].resize(words);
+            right[i].resize(words);
+        }
+        for (int i = 0; i < 16; ++i) edge[i].resize(words);
+    }
+
+    void clear() {
+        std::fill(seen.begin(), seen.end(), 0);
+        std::fill(multi.begin(), multi.end(), 0);
+        for (int i = 0; i < 4; ++i) {
+            std::fill(left[i].begin(), left[i].end(), 0);
+            std::fill(right[i].begin(), right[i].end(), 0);
+        }
+        for (int i = 0; i < 16; ++i) std::fill(edge[i].begin(), edge[i].end(), 0);
+    }
+
+    size_t words;
+    std::array<std::vector<uint64_t>, 4> left;
+    std::array<std::vector<uint64_t>, 4> right;
+    std::array<std::vector<uint64_t>, 16> edge;
+    std::vector<uint64_t> seen;
+    std::vector<uint64_t> multi;
+};
+
+static inline void ggcat_or_colors(std::vector<uint64_t>& bits,
+                                   const std::vector<uint32_t>& colors) {
+    for (size_t i = 0; i < colors.size(); ++i) {
+        uint32_t c = colors[i];
+        bits[c >> 6] |= 1ULL << (c & 63);
+    }
+}
+
+static inline uint64_t ggcat_popcount_bits(const std::vector<uint64_t>& bits) {
+    uint64_t n = 0;
+    for (size_t i = 0; i < bits.size(); ++i) n += (uint64_t)__builtin_popcountll(bits[i]);
+    return n;
+}
+
+static void ggcat_add_endpoint_group_to_hist(const std::vector<GgcatEndpointRecord>& records,
+                                             size_t begin,
+                                             size_t end,
                                              int k,
                                              GgcatColorCache& colors,
+                                             GgcatEndpointScratch& scratch,
                                              std::vector<uint64_t>& hist) {
-    std::array<std::vector<uint32_t>, 16> edge_colors;
+    uint64_t infix = records[begin].infix;
+    scratch.clear();
+
+    for (size_t i = begin; i < end; ++i) {
+        const std::vector<uint32_t>& cs = colors.colors(records[i].sid);
+        if (records[i].side == 0) ggcat_or_colors(scratch.left[records[i].base], cs);
+        else ggcat_or_colors(scratch.right[records[i].base], cs);
+    }
 
     for (uint8_t a = 0; a < 4; ++a) {
         for (uint8_t b = 0; b < 4; ++b) {
@@ -179,33 +218,23 @@ static void ggcat_add_endpoint_group_to_hist(uint64_t infix,
             if (!ggcat_canonical_edge(kp1mer, k, &ce)) continue;
             if (ce.infix != infix || ce.edge != (uint8_t)((a << 2) | b)) continue;
 
-            std::vector<uint32_t>& dst = edge_colors[(a << 2) | b];
-            for (size_t li = 0; li < group.left[a].size(); ++li) {
-                const std::vector<uint32_t>& lc = colors.colors(group.left[a][li]);
-                for (size_t ri = 0; ri < group.right[b].size(); ++ri) {
-                    const std::vector<uint32_t>& rc = colors.colors(group.right[b][ri]);
-                    ggcat_union_intersection(lc, rc, dst);
-                }
+            std::vector<uint64_t>& e = scratch.edge[(a << 2) | b];
+            for (size_t w = 0; w < scratch.words; ++w) {
+                uint64_t x = scratch.left[a][w] & scratch.right[b][w];
+                e[w] = x;
+                scratch.multi[w] |= scratch.seen[w] & x;
+                scratch.seen[w] |= x;
             }
-            ggcat_sort_unique(dst);
         }
     }
 
-    std::unordered_map<uint32_t, uint8_t> multiplicity;
-    for (int e = 0; e < 16; ++e) {
-        for (size_t i = 0; i < edge_colors[e].size(); ++i) {
-            uint8_t& m = multiplicity[edge_colors[e][i]];
-            if (m < 2) ++m;
-        }
-    }
-
-    uint64_t sigma = multiplicity.size();
+    uint64_t sigma = ggcat_popcount_bits(scratch.seen);
     if (sigma == 0) return;
 
     for (int e = 0; e < 16; ++e) {
         uint64_t j = 0;
-        for (size_t i = 0; i < edge_colors[e].size(); ++i) {
-            if (multiplicity[edge_colors[e][i]] == 1) ++j;
+        for (size_t w = 0; w < scratch.words; ++w) {
+            j += (uint64_t)__builtin_popcountll(scratch.edge[e][w] & ~scratch.multi[w]);
         }
         if (j > 0) ++hist[ggcat_hist_idx(j, sigma)];
     }
@@ -250,8 +279,11 @@ static void output_hist_infix_ggcat(int argc, char *argv[]) {
     }
 
     std::vector<uint64_t> hist((n_colors + 1) * n_colors / 2, 0);
+    std::unordered_map<uint32_t, uint64_t> internal_same;
     std::unordered_map<uint64_t, uint64_t> internal_pairs;
-    std::unordered_map<uint64_t, GgcatEndpointGroup> endpoint_groups;
+    std::vector<GgcatEndpointRecord> endpoint_records;
+    std::vector<uint32_t> all_subset_ids;
+    std::vector<uint32_t> full_color_subset_ids;
 
     gzFile fp = gzopen(graph_path, "r");
     if (fp == 0) {
@@ -261,6 +293,7 @@ static void output_hist_infix_ggcat(int argc, char *argv[]) {
     kseq_t *ks = kseq_init(fp);
     int ret;
     uint64_t unitigs = 0, internal_edges = 0;
+    uint64_t color_run_count = 0, mixed_internal_edges = 0;
     while ((ret = kseq_read(ks)) >= 0) {
         int len = (int)ks->seq.l;
         if (len < param.k) continue;
@@ -276,32 +309,82 @@ static void output_hist_infix_ggcat(int argc, char *argv[]) {
         if (runs.empty()) {
             throw std::runtime_error("ggcat unitig has no color runs; build the graph with ggcat build -c");
         }
-        std::vector<uint32_t> sids = ggcat_expand_runs(runs, n_kmers);
+        size_t run_kmers = 0;
+        for (size_t i = 0; i < runs.size(); ++i) {
+            run_kmers += runs[i].second;
+            all_subset_ids.push_back(runs[i].first);
+        }
+        if (run_kmers != n_kmers) {
+            throw std::runtime_error("ggcat color runs do not match the number of k-mers in a unitig");
+        }
+        color_run_count += runs.size();
 
         uint64_t first_kmer = 0, last_kmer = 0;
         if (ggcat_encode_window(ks->seq.s, 0, param.k, &first_kmer)) {
-            ggcat_add_right_endpoint(endpoint_groups, first_kmer, param.k, sids.front());
+            ggcat_add_right_endpoint(endpoint_records, first_kmer, param.k, runs.front().first);
+            full_color_subset_ids.push_back(runs.front().first);
         }
         if (ggcat_encode_window(ks->seq.s, (int)n_kmers - 1, param.k, &last_kmer)) {
-            ggcat_add_left_endpoint(endpoint_groups, last_kmer, param.k, sids.back());
+            ggcat_add_left_endpoint(endpoint_records, last_kmer, param.k, runs.back().first);
+            full_color_subset_ids.push_back(runs.back().first);
         }
 
-        for (size_t i = 0; i + 1 < n_kmers; ++i) {
-            uint64_t kp1mer = 0;
-            if (!ggcat_encode_window(ks->seq.s, (int)i, param.k + 1, &kp1mer)) continue;
-            GgcatCanonicalEdge ce;
-            if (!ggcat_canonical_edge(kp1mer, param.k, &ce)) continue;
-            ++internal_pairs[ggcat_pair_key(sids[i], sids[i + 1])];
-            ++internal_edges;
+        size_t offset = 0;
+        for (size_t r = 0; r < runs.size(); ++r) {
+            uint32_t sid = runs[r].first;
+            uint32_t count = runs[r].second;
+            for (size_t i = offset; i + 1 < offset + count; ++i) {
+                uint64_t kp1mer = 0;
+                if (!ggcat_encode_window(ks->seq.s, (int)i, param.k + 1, &kp1mer)) continue;
+                GgcatCanonicalEdge ce;
+                if (!ggcat_canonical_edge(kp1mer, param.k, &ce)) continue;
+                ++internal_same[sid];
+                ++internal_edges;
+            }
+            if (r + 1 < runs.size() && count > 0 && runs[r + 1].second > 0) {
+                size_t i = offset + count - 1;
+                uint64_t kp1mer = 0;
+                if (ggcat_encode_window(ks->seq.s, (int)i, param.k + 1, &kp1mer)) {
+                    GgcatCanonicalEdge ce;
+                    if (ggcat_canonical_edge(kp1mer, param.k, &ce)) {
+                        uint32_t next_sid = runs[r + 1].first;
+                        if (sid == next_sid) {
+                            ++internal_same[sid];
+                        } else {
+                            ++internal_pairs[ggcat_pair_key(sid, next_sid)];
+                            full_color_subset_ids.push_back(sid);
+                            full_color_subset_ids.push_back(next_sid);
+                            ++mixed_internal_edges;
+                        }
+                        ++internal_edges;
+                    }
+                }
+            }
+            offset += count;
         }
         ++unitigs;
     }
     kseq_destroy(ks);
     gzclose(fp);
 
+    ggcat_sort_unique(all_subset_ids);
+    ggcat_sort_unique(full_color_subset_ids);
+    color_cache.reserve(all_subset_ids.size());
+    color_cache.query(full_color_subset_ids.data(), full_color_subset_ids.size());
+    color_cache.query_cardinalities(all_subset_ids.data(), all_subset_ids.size());
+
     fprintf(stderr, "Read %" PRIu64 " ggcat unitigs\n", unitigs);
+    fprintf(stderr, "Color runs: %" PRIu64 "\n", color_run_count);
     fprintf(stderr, "Internal edge records: %" PRIu64 "\n", internal_edges);
-    fprintf(stderr, "Endpoint infix groups: %zu\n", endpoint_groups.size());
+    fprintf(stderr, "Mixed-subset internal edge records: %" PRIu64 "\n", mixed_internal_edges);
+    fprintf(stderr, "Distinct color subsets: %zu\n", all_subset_ids.size());
+    fprintf(stderr, "Full color subsets queried: %zu\n", full_color_subset_ids.size());
+    fprintf(stderr, "Endpoint records: %zu\n", endpoint_records.size());
+
+    for (std::unordered_map<uint32_t, uint64_t>::const_iterator it = internal_same.begin(); it != internal_same.end(); ++it) {
+        uint64_t c_count = color_cache.cardinality(it->first);
+        if (c_count > 0) hist[ggcat_hist_idx(c_count, c_count)] += it->second;
+    }
 
     for (std::unordered_map<uint64_t, uint64_t>::const_iterator it = internal_pairs.begin(); it != internal_pairs.end(); ++it) {
         uint32_t sid1 = (uint32_t)(it->first >> 32);
@@ -310,9 +393,21 @@ static void output_hist_infix_ggcat(int argc, char *argv[]) {
         if (c_count > 0) hist[ggcat_hist_idx(c_count, c_count)] += it->second;
     }
 
-    for (std::unordered_map<uint64_t, GgcatEndpointGroup>::const_iterator it = endpoint_groups.begin(); it != endpoint_groups.end(); ++it) {
-        ggcat_add_endpoint_group_to_hist(it->first, it->second, param.k, color_cache, hist);
+    std::sort(endpoint_records.begin(), endpoint_records.end(), ggcat_endpoint_record_less);
+    endpoint_records.erase(std::unique(endpoint_records.begin(), endpoint_records.end(), ggcat_endpoint_record_equal), endpoint_records.end());
+    fprintf(stderr, "Unique endpoint records: %zu\n", endpoint_records.size());
+
+    GgcatEndpointScratch scratch(n_colors);
+    size_t groups = 0;
+    size_t begin = 0;
+    while (begin < endpoint_records.size()) {
+        size_t end = begin + 1;
+        while (end < endpoint_records.size() && endpoint_records[end].infix == endpoint_records[begin].infix) ++end;
+        ggcat_add_endpoint_group_to_hist(endpoint_records, begin, end, param.k, color_cache, scratch, hist);
+        ++groups;
+        begin = end;
     }
+    fprintf(stderr, "Endpoint infix groups: %zu\n", groups);
 
     for (size_t i = 0; i < hist.size(); ++i) printf("%" PRIu64 "\n", hist[i]);
 #endif

@@ -210,6 +210,10 @@ set is computed as $C(ax) \cap C(xb)$ from the adjacent _k_-mer color sets.
 ./pangrowth hill_cdbg hist.txt hist_infix.txt
 ```
 
+By default, interpolation uses the Bernoulli-hybrid approximation with exact
+values for the last 5 bins (`-B 5`). Use `-B INT` to change the exact right
+tail, or `-E` to force the original exact interpolation.
+
 The output format is identical to `hill`: a tab-separated table with columns `fit`, `m`, `richness`, `exp_entropy`, `inv_gini_simp`.
 
 ## Publication

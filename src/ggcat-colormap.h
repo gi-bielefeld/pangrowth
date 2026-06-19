@@ -47,11 +47,23 @@ public:
     }
 
     size_t cardinality(uint32_t subset_id) {
-        return colors(subset_id).size();
+        std::unordered_map<uint32_t, std::vector<uint32_t> >::iterator it = cache_.find(subset_id);
+        if (it != cache_.end()) return it->second.size();
+        std::unordered_map<uint32_t, size_t>::iterator cit = cardinality_cache_.find(subset_id);
+        if (cit != cardinality_cache_.end()) return cit->second;
+        query_cardinalities(&subset_id, 1);
+        cit = cardinality_cache_.find(subset_id);
+        if (cit == cardinality_cache_.end()) throw std::runtime_error("ggcat colormap query did not return requested subset");
+        return cit->second;
     }
 
     size_t num_colors() const {
         return num_colors_;
+    }
+
+    void reserve(size_t n) {
+        cache_.reserve(n);
+        cardinality_cache_.reserve(n);
     }
 
     void query(const uint32_t* subset_ids, size_t n) {
@@ -81,12 +93,40 @@ public:
 #endif
     }
 
+    void query_cardinalities(const uint32_t* subset_ids, size_t n) {
+#ifdef PANGROWTH_WITH_GGCAT
+        std::vector<uint32_t> missing;
+        missing.reserve(n);
+        for (size_t i = 0; i < n; ++i) {
+            if (cache_.find(subset_ids[i]) == cache_.end()
+                && cardinality_cache_.find(subset_ids[i]) == cardinality_cache_.end()) {
+                missing.push_back(subset_ids[i]);
+            }
+        }
+        if (missing.empty()) return;
+
+        instance_->query_colormap(
+            colormap_path_,
+            missing.data(),
+            missing.size(),
+            true,
+            [&](uint32_t subset, ggcat::Slice<uint32_t> cols) {
+                cardinality_cache_[subset] = cols.size;
+            });
+#else
+        (void)subset_ids;
+        (void)n;
+        throw std::runtime_error("pangrowth was built without ggcat API support");
+#endif
+    }
+
 private:
     std::string graph_path_;
     std::string colormap_path_;
     size_t threads_;
     size_t num_colors_;
     std::unordered_map<uint32_t, std::vector<uint32_t> > cache_;
+    std::unordered_map<uint32_t, size_t> cardinality_cache_;
 #ifdef PANGROWTH_WITH_GGCAT
     ggcat::GGCATInstance* instance_;
 #endif
