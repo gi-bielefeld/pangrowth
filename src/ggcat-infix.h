@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -18,6 +19,11 @@
 struct GgcatInfixParams {
     int k;
     int n_thread;
+};
+
+struct GgcatHistograms {
+    std::vector<uint64_t> kmer;
+    std::vector<uint64_t> infix;
 };
 
 static inline uint8_t ggcat_comp_base(uint8_t b) {
@@ -271,37 +277,31 @@ static void ggcat_add_endpoint_group_to_hist(const std::vector<GgcatEndpointReco
     }
 }
 
-static void output_hist_infix_ggcat(int argc, char *argv[]) {
+static void ggcat_print_hist(FILE *out, const std::vector<uint64_t>& hist) {
+    for (size_t i = 0; i < hist.size(); ++i) fprintf(out, "%" PRIu64 "\n", hist[i]);
+}
+
+static void ggcat_print_hist_1based(FILE *out, const std::vector<uint64_t>& hist) {
+    for (size_t i = 1; i < hist.size(); ++i) fprintf(out, "%" PRIu64 "\n", hist[i]);
+}
+
+static GgcatHistograms ggcat_compute_histograms(const char *graph_path,
+                                                const GgcatInfixParams& param,
+                                                bool compute_kmer,
+                                                bool compute_infix) {
 #ifndef PANGROWTH_WITH_GGCAT
-    (void)argc;
-    (void)argv;
-    fprintf(stderr, "pangrowth hist_infix_ggcat requires a build with -DPANGROWTH_WITH_GGCAT=ON\n");
-    return;
+    (void)graph_path;
+    (void)param;
+    (void)compute_kmer;
+    (void)compute_infix;
+    fprintf(stderr, "ggcat histogram support requires a build with -DPANGROWTH_WITH_GGCAT=ON\n");
+    exit(EXIT_FAILURE);
 #else
-    GgcatInfixParams param;
-    param.k = 17;
-    param.n_thread = 1;
-
-    ketopt_t options = KETOPT_INIT;
-    int c;
-    while ((c = ketopt(&options, argc, argv, 1, "k:t:", 0)) >= 0) {
-        if (c == 'k') param.k = atoi(options.arg);
-        else if (c == 't') param.n_thread = atoi(options.arg);
-    }
-
-    if (argc - options.ind != 1) {
-        fprintf(stderr, "Usage: pangrowth hist_infix_ggcat [options] <ggcat_k_graph.fa>\n");
-        fprintf(stderr, "Options:\n");
-        fprintf(stderr, "  -k INT     k-mer size used to build the ggcat graph [%d]\n", param.k);
-        fprintf(stderr, "  -t INT     threads for ggcat colormap queries [%d]\n", param.n_thread);
-        return;
-    }
     if (param.k < 2 || param.k > 31) {
-        fprintf(stderr, "Error: hist_infix_ggcat currently requires 2 <= k <= 31\n");
+        fprintf(stderr, "Error: ggcat histogram support currently requires 2 <= k <= 31\n");
         exit(EXIT_FAILURE);
     }
 
-    const char *graph_path = argv[options.ind];
     GgcatColorCache color_cache(graph_path, (size_t)param.n_thread);
     uint64_t n_colors = color_cache.num_colors();
     if (n_colors == 0) {
@@ -314,12 +314,15 @@ static void output_hist_infix_ggcat(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    std::vector<uint64_t> hist((n_colors + 1) * n_colors / 2, 0);
+    GgcatHistograms out;
+    if (compute_kmer) out.kmer.assign(n_colors + 1, 0);
+    if (compute_infix) out.infix.assign((n_colors + 1) * n_colors / 2, 0);
     std::vector<GgcatEndpointRecord> endpoint_records;
     std::vector<uint32_t> subset_ids(n_color_subsets);
     for (size_t i = 0; i < n_color_subsets; ++i) subset_ids[i] = (uint32_t)i;
     color_cache.reserve(n_color_subsets);
-    color_cache.query(subset_ids.data(), subset_ids.size());
+    if (compute_infix) color_cache.query(subset_ids.data(), subset_ids.size());
+    else color_cache.query_cardinalities(subset_ids.data(), subset_ids.size());
 
     gzFile fp = gzopen(graph_path, "r");
     if (fp == 0) {
@@ -351,31 +354,34 @@ static void output_hist_infix_ggcat(int argc, char *argv[]) {
         }
         color_run_count += runs.size();
 
-        ggcat_add_unitig_boundary_endpoints(endpoint_records,
-                                            ks->seq.s,
-                                            len,
-                                            param.k,
-                                            runs.front().first,
-                                            runs.back().first);
+        if (compute_infix) {
+            ggcat_add_unitig_boundary_endpoints(endpoint_records,
+                                                ks->seq.s,
+                                                len,
+                                                param.k,
+                                                runs.front().first,
+                                                runs.back().first);
+        }
 
         for (size_t r = 0; r < runs.size(); ++r) {
             uint32_t sid = runs[r].first;
             uint32_t count = runs[r].second;
-            if (count > 1) {
-                uint64_t c_count = color_cache.cardinality(sid);
-                if (c_count > 0) hist[ggcat_hist_idx(c_count, c_count)] += (uint64_t)(count - 1);
+            uint64_t sid_cardinality = color_cache.cardinality(sid);
+            if (compute_kmer && sid_cardinality > 0) out.kmer[sid_cardinality] += count;
+            if (compute_infix && count > 1) {
+                if (sid_cardinality > 0) out.infix[ggcat_hist_idx(sid_cardinality, sid_cardinality)] += (uint64_t)(count - 1);
                 internal_edges += (uint64_t)(count - 1);
             }
-            if (r + 1 < runs.size() && count > 0 && runs[r + 1].second > 0) {
+            if (compute_infix && r + 1 < runs.size() && count > 0 && runs[r + 1].second > 0) {
                 uint32_t next_sid = runs[r + 1].first;
                 uint64_t c_count = 0;
                 if (sid == next_sid) {
-                    c_count = color_cache.cardinality(sid);
+                    c_count = sid_cardinality;
                 } else {
                     c_count = intersect_size_sorted(color_cache.colors(sid), color_cache.colors(next_sid));
                     ++mixed_internal_edges;
                 }
-                if (c_count > 0) ++hist[ggcat_hist_idx(c_count, c_count)];
+                if (c_count > 0) ++out.infix[ggcat_hist_idx(c_count, c_count)];
                 ++internal_edges;
             }
         }
@@ -386,27 +392,96 @@ static void output_hist_infix_ggcat(int argc, char *argv[]) {
 
     fprintf(stderr, "Read %" PRIu64 " ggcat unitigs\n", unitigs);
     fprintf(stderr, "Color runs: %" PRIu64 "\n", color_run_count);
-    fprintf(stderr, "Internal edge records: %" PRIu64 "\n", internal_edges);
-    fprintf(stderr, "Mixed-subset internal edge records: %" PRIu64 "\n", mixed_internal_edges);
     fprintf(stderr, "Distinct color subsets: %zu\n", subset_ids.size());
-    fprintf(stderr, "Endpoint records: %zu\n", endpoint_records.size());
+    if (compute_infix) {
+        fprintf(stderr, "Internal edge records: %" PRIu64 "\n", internal_edges);
+        fprintf(stderr, "Mixed-subset internal edge records: %" PRIu64 "\n", mixed_internal_edges);
+        fprintf(stderr, "Endpoint records: %zu\n", endpoint_records.size());
 
-    std::sort(endpoint_records.begin(), endpoint_records.end(), ggcat_endpoint_record_less);
-    endpoint_records.erase(std::unique(endpoint_records.begin(), endpoint_records.end(), ggcat_endpoint_record_equal), endpoint_records.end());
-    fprintf(stderr, "Unique endpoint records: %zu\n", endpoint_records.size());
+        std::sort(endpoint_records.begin(), endpoint_records.end(), ggcat_endpoint_record_less);
+        endpoint_records.erase(std::unique(endpoint_records.begin(), endpoint_records.end(), ggcat_endpoint_record_equal), endpoint_records.end());
+        fprintf(stderr, "Unique endpoint records: %zu\n", endpoint_records.size());
 
-    GgcatEndpointScratch scratch(n_colors);
-    size_t groups = 0;
-    size_t begin = 0;
-    while (begin < endpoint_records.size()) {
-        size_t end = begin + 1;
-        while (end < endpoint_records.size() && endpoint_records[end].infix == endpoint_records[begin].infix) ++end;
-        ggcat_add_endpoint_group_to_hist(endpoint_records, begin, end, param.k, color_cache, scratch, hist);
-        ++groups;
-        begin = end;
+        GgcatEndpointScratch scratch(n_colors);
+        size_t groups = 0;
+        size_t begin = 0;
+        while (begin < endpoint_records.size()) {
+            size_t end = begin + 1;
+            while (end < endpoint_records.size() && endpoint_records[end].infix == endpoint_records[begin].infix) ++end;
+            ggcat_add_endpoint_group_to_hist(endpoint_records, begin, end, param.k, color_cache, scratch, out.infix);
+            ++groups;
+            begin = end;
+        }
+        fprintf(stderr, "Endpoint infix groups: %zu\n", groups);
     }
-    fprintf(stderr, "Endpoint infix groups: %zu\n", groups);
 
-    for (size_t i = 0; i < hist.size(); ++i) printf("%" PRIu64 "\n", hist[i]);
+    return out;
 #endif
+}
+
+static bool ggcat_parse_hist_cli(int argc,
+                                 char *argv[],
+                                 GgcatInfixParams& param,
+                                 const char **graph_path,
+                                 const char *cmd) {
+    param.k = 17;
+    param.n_thread = 1;
+
+    ketopt_t options = KETOPT_INIT;
+    int c;
+    while ((c = ketopt(&options, argc, argv, 1, "k:t:", 0)) >= 0) {
+        if (c == 'k') param.k = atoi(options.arg);
+        else if (c == 't') param.n_thread = atoi(options.arg);
+    }
+
+    if (argc - options.ind != 1) {
+        fprintf(stderr, "Usage: pangrowth %s [options] <ggcat_k_graph.fa>\n", cmd);
+        fprintf(stderr, "Options:\n");
+        fprintf(stderr, "  -k INT     k-mer size used to build the ggcat graph [%d]\n", param.k);
+        fprintf(stderr, "  -t INT     threads for ggcat colormap queries [%d]\n", param.n_thread);
+        return false;
+    }
+    *graph_path = argv[options.ind];
+    return true;
+}
+
+static void output_hist_ggcat(int argc, char *argv[]) {
+    GgcatInfixParams param;
+    const char *graph_path = 0;
+    if (!ggcat_parse_hist_cli(argc, argv, param, &graph_path, "hist --ggcat")) return;
+    GgcatHistograms hist = ggcat_compute_histograms(graph_path, param, true, false);
+    ggcat_print_hist_1based(stdout, hist.kmer);
+}
+
+static void output_hist_infix_ggcat(int argc, char *argv[]) {
+    GgcatInfixParams param;
+    const char *graph_path = 0;
+    if (!ggcat_parse_hist_cli(argc, argv, param, &graph_path, "hist_infix_ggcat")) return;
+    GgcatHistograms hist = ggcat_compute_histograms(graph_path, param, false, true);
+    ggcat_print_hist(stdout, hist.infix);
+}
+
+static void output_hist_cdbg_ggcat(int argc, char *argv[], const char *out_prefix) {
+    GgcatInfixParams param;
+    const char *graph_path = 0;
+    if (!ggcat_parse_hist_cli(argc, argv, param, &graph_path, "hist --cdbg --ggcat")) return;
+    GgcatHistograms hist = ggcat_compute_histograms(graph_path, param, true, true);
+
+    std::string kmer_path = std::string(out_prefix) + "_hist.txt";
+    std::string infix_path = std::string(out_prefix) + "_hist_infix.txt";
+    FILE *kmer_out = fopen(kmer_path.c_str(), "w");
+    if (kmer_out == 0) {
+        fprintf(stderr, "Could not open output file: %s\n", kmer_path.c_str());
+        exit(EXIT_FAILURE);
+    }
+    ggcat_print_hist_1based(kmer_out, hist.kmer);
+    fclose(kmer_out);
+
+    FILE *infix_out = fopen(infix_path.c_str(), "w");
+    if (infix_out == 0) {
+        fprintf(stderr, "Could not open output file: %s\n", infix_path.c_str());
+        exit(EXIT_FAILURE);
+    }
+    ggcat_print_hist(infix_out, hist.infix);
+    fclose(infix_out);
 }

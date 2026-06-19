@@ -9,6 +9,8 @@
 *.fasta.gz
 **/compile_commands.json
 **/pangrowth
+**/out_hist.txt
+**/out_hist_infix.txt
 **/hist.txt
 **/hist_infix.txt
 **/pangenome_growth.txt

@@ -637,15 +637,24 @@ param_hill_t parse_common_cli(int argc, char *argv[]){
     return params;
 }
 
-param_hill_t cli_hill(int argc, char *argv[]) {
-    param_hill_t params = parse_common_cli(argc, argv);
+void print_hill_usage() {
+    fprintf(stderr, "Usage:\n");
+    fprintf(stderr, "  pangrowth hill [options] <hist_kmer>\n");
+    fprintf(stderr, "  pangrowth hill [options] <hist_kmer> <hist_infix>\n");
+    fprintf(stderr, "Options:\n");
+    fprintf(stderr, "  -p INT     number of sample points; 0 outputs all points [30]\n");
+    fprintf(stderr, "  -f PATH    file containing one sample point per line\n");
+    fprintf(stderr, "cdbg interpolation options:\n");
+    fprintf(stderr, "  -B INT     Bernoulli hybrid with this many exact right-tail bins [5]\n");
+    fprintf(stderr, "  -E         use exact interpolation instead of the Bernoulli hybrid\n");
+}
 
+void validate_hill_params(param_hill_t &params, int argc, char *argv[]) {
     if (params.use_bernoulli_unimer || params.force_exact_cdbg) {
-        fprintf(stderr, "Error: -B and -E are only supported by hill_cdbg.\n");
+        fprintf(stderr, "Error: -B and -E require two input histograms for cdbg mode.\n");
         params.err = true;
     }
 
-    //input_hist_kmer
     if (argc - params.o_index != 1) {
         fprintf(stderr, "Error: Expected 1 file argument (k-mer histogram).\n");
         params.err = true;
@@ -653,18 +662,20 @@ param_hill_t cli_hill(int argc, char *argv[]) {
 
     //helper
     if (params.err) {
-        fprintf(stderr, "Usage: pangrowth %s [-p <num_points>, -f <file_points>] <hist_kmer>\n", argv[0]);
+        print_hill_usage();
         exit(EXIT_FAILURE);
     }
 
     params.kmer_hist_filename = argv[params.o_index];
+}
+
+param_hill_t cli_hill(int argc, char *argv[]) {
+    param_hill_t params = parse_common_cli(argc, argv);
+    validate_hill_params(params, argc, argv);
     return params;
 }
 
-param_hill_cdbg_t cli_hill_cdbg(int argc, char *argv[]) {
-    param_hill_cdbg_t params;
-    static_cast<param_hill_t&>(params) =  parse_common_cli(argc, argv);
-
+void validate_hill_cdbg_params(param_hill_cdbg_t &params, int argc, char *argv[]) {
     if (params.force_exact_cdbg && params.use_bernoulli_unimer) {
         fprintf(stderr, "Error: -E and -B cannot be used together.\n");
         params.err = true;
@@ -686,25 +697,22 @@ param_hill_cdbg_t cli_hill_cdbg(int argc, char *argv[]) {
 
     //helper
     if (params.err) {
-        fprintf(stderr, "Usage: pangrowth %s [-p <num_points>, -f <file_points>, -B <exact_tail>, -E] <hist_kmer> <hist_infix>\n", argv[0]);
+        print_hill_usage();
         exit(EXIT_FAILURE);
     }
 
     params.kmer_hist_filename = argv[params.o_index];
     params.infix_hist_filename = argv[params.o_index+1];
+}
+
+param_hill_cdbg_t cli_hill_cdbg(int argc, char *argv[]) {
+    param_hill_cdbg_t params;
+    static_cast<param_hill_t&>(params) =  parse_common_cli(argc, argv);
+    validate_hill_cdbg_params(params, argc, argv);
     return params;
 }
 
-void output_hill(int argc, char *argv[]) {
-    param_hill_t params = cli_hill(argc, argv);
-    vector<double> h_kmer = read_histogram_1based_index(params.kmer_hist_filename);
-    update_params(params, h_kmer);
-    sample_points(params);
-    hill(h_kmer, params.points);
-}
-
-void output_hill_cdbg(int argc, char *argv[]) {
-    param_hill_cdbg_t params = cli_hill_cdbg(argc, argv);
+void run_hill_cdbg(param_hill_cdbg_t &params) {
     vector<double> h_kmer = read_histogram_1based_index(params.kmer_hist_filename);
     vector<double> h_infix_eq = read_histogram_1based_index(params.infix_hist_filename);
     update_params(params, h_kmer);
@@ -714,4 +722,32 @@ void output_hill_cdbg(int argc, char *argv[]) {
     } else {
         hill_cdbg(h_kmer, h_infix_eq, params.points);
     }
+}
+
+void output_hill(int argc, char *argv[]) {
+    if (argc == 1 || (argc == 2 && (strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0))) {
+        print_hill_usage();
+        return;
+    }
+
+    param_hill_t params = parse_common_cli(argc, argv);
+    int n_files = argc - params.o_index;
+    if (n_files == 2) {
+        param_hill_cdbg_t cdbg_params;
+        static_cast<param_hill_t&>(cdbg_params) = params;
+        validate_hill_cdbg_params(cdbg_params, argc, argv);
+        run_hill_cdbg(cdbg_params);
+        return;
+    }
+
+    validate_hill_params(params, argc, argv);
+    vector<double> h_kmer = read_histogram_1based_index(params.kmer_hist_filename);
+    update_params(params, h_kmer);
+    sample_points(params);
+    hill(h_kmer, params.points);
+}
+
+void output_hill_cdbg(int argc, char *argv[]) {
+    param_hill_cdbg_t params = cli_hill_cdbg(argc, argv);
+    run_hill_cdbg(params);
 }

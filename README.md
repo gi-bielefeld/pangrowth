@@ -38,7 +38,7 @@ Default build:
 ```bash
 git clone https://github.com/gi-bielefeld/pangrowth
 cd pangrowth
-cmake -S . -B build
+cmake -B build
 cmake --build build -j 8
 ```
 
@@ -51,7 +51,7 @@ Optional ggcat-enabled build:
 ```bash
 ./scripts/build_ggcat_cpp_api.sh
 
-cmake -S . -B build-ggcat -DPANGROWTH_WITH_GGCAT=ON
+cmake -B build-ggcat -DPANGROWTH_WITH_GGCAT=ON
 cmake --build build-ggcat -j 8
 ```
 
@@ -172,16 +172,18 @@ The output is a tab-separated table with columns: `fit`, `m`, `richness`, `exp_e
 
 The colored compacted de Bruijn graph (cdbg) compacts non-branching path of _k_-mers into **unitigs**. Its diversity can be estimated by combining a _k_-mer histogram with an **infix equivalents histogram**.
 
-**Step 1**: generate the infix equivalents histogram.
+**Step 1**: generate the _k_-mer and infix-equivalent histograms.
 
 From fasta files:
 
 ```bash
-./pangrowth hist -k 17 -t 12 data/fa/*.fna.gz > hist.txt
-./pangrowth hist_infix -k 17 -t 12 -T data/fa/*.fna.gz > hist_infix.txt
+./pangrowth hist --cdbg -k 17 -t 12 -T -o ecoli data/fa/*.fna.gz
 ```
 
-Options for `hist_infix` are the same as for `hist`:
+This writes `ecoli_hist.txt` and `ecoli_hist_infix.txt`. Without `-o`, the
+default names are `out_hist.txt` and `out_hist_infix.txt`.
+
+Options:
 - `-k INT` _k_-mer size (default: 17)
 - `-t INT` number of worker threads (default: 4)
 - `-i PATH` file containing a list of fasta files (one per line)
@@ -193,21 +195,27 @@ From a colored ggcat _k_-mer graph:
 
 ```bash
 ggcat build -c -k 17 -d inputs.tsv -o graph_k17.fa -t ggcat_tmp -j 8 --min-multiplicity 1
-./pangrowth hist_infix_ggcat -k 17 -t 1 graph_k17.fa > hist_infix.txt
+./pangrowth hist --cdbg --ggcat -k 17 -t 8 -o ecoli graph_k17.fa
 ```
 
 The `inputs.tsv` file must contain one color name and one fasta path per line,
 separated by a tab. The ggcat build used here currently requires `-j` to be a
 power of two (eg, `1`, `2`, `4`, `8`...).
 
-`hist_infix_ggcat` computes the graph-induced infix equivalents histogram from
-one colored compacted de Bruijn graph. For an edge candidate $axb$, its color
-set is computed as $C(ax) \cap C(xb)$ from the adjacent _k_-mer color sets.
+The ggcat mode computes both histograms in one graph scan. For an edge candidate
+$axb$, its color set is $C(ax) \cap C(xb)$ from the adjacent _k_-mer color
+sets.
+
+To compute only the _k_-mer histogram, retain stdout:
+
+```bash
+./pangrowth hist --ggcat -k 17 -t 8 graph_k17.fa > hist.txt
+```
 
 **Step 2**: compute Hill numbers for the cdbg using both histograms:
 
 ```bash
-./pangrowth hill_cdbg hist.txt hist_infix.txt
+./pangrowth hill ecoli_hist.txt ecoli_hist_infix.txt
 ```
 
 By default, interpolation uses the Bernoulli-hybrid approximation with exact
@@ -215,6 +223,9 @@ values for the last 5 bins (`-B 5`). Use `-B INT` to change the exact right
 tail, or `-E` to force the original exact interpolation.
 
 The output format is identical to `hill`: a tab-separated table with columns `fit`, `m`, `richness`, `exp_entropy`, `inv_gini_simp`.
+
+The previous `hist_infix`, `hist_infix_ggcat`, and `hill_cdbg` commands remain
+available as compatibility aliases.
 
 ## Publication
 
