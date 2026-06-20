@@ -251,28 +251,6 @@ make_log_factorials(int n) {
     return log_fact;
 }
 
-double static inline
-est_h_unimer_exact_i(vector<double> &hbar,
-                    int i,
-                    int n,
-                    int m,
-                    const vector<double>& log_fact,
-                    double lchoose_nm) {
-    double total = 0.0;
-    int max_sigma = min(n, n - m + i);
-
-    for (int sigma = i; sigma <= max_sigma; ++sigma) {
-        double lchoose_n_sigma_m_i = log_choose_fast(log_fact, n - sigma, m - i);
-        for (int j = i; j <= sigma; ++j) {
-            double h = hbar[(sigma * (sigma - 1) / 2) + j];
-            if (h <= 0.0) continue;
-            total += h * exp(log_choose_fast(log_fact, j, i) + lchoose_n_sigma_m_i - lchoose_nm);
-        }
-    }
-
-    return total;
-}
-
 void static inline
 add_binomial_mixture(vector<double>& out,
                      double weight,
@@ -309,12 +287,12 @@ add_binomial_mixture(vector<double>& out,
 }
 
 void static inline
-est_h_bernoulli_hybrid(vector<double>& h,
-                       int n,
-                       int m,
-                       int exact_tail,
-                       const vector<double>& log_fact,
-                       vector<double>& h_hat) {
+est_h_kmer_bernoulli_hybrid(vector<double>& h,
+                            int n,
+                            int m,
+                            int exact_tail,
+                            const vector<double>& log_fact,
+                            vector<double>& h_hat) {
     fill(h_hat.begin(), h_hat.begin() + m + 1, 0.0);
 
     double p = (double)m / (double)n;
@@ -338,12 +316,11 @@ est_h_bernoulli_hybrid(vector<double>& h,
 }
 
 void static inline
-est_h_unimer_bernoulli_hybrid(vector<double> &hbar,
-                              int n,
-                              int m,
-                              int exact_tail,
-                              const vector<double>& log_fact,
-                              vector<double>& h_hat_unimer) {
+est_h_unimer_bernoulli(vector<double> &hbar,
+                       int n,
+                       int m,
+                       const vector<double>& log_fact,
+                       vector<double>& h_hat_unimer) {
     fill(h_hat_unimer.begin(), h_hat_unimer.begin() + m + 1, 0.0);
 
     double p = (double)m / (double)n;
@@ -371,14 +348,54 @@ est_h_unimer_bernoulli_hybrid(vector<double> &hbar,
     for (int j = 1; j <= n; ++j) {
         add_binomial_mixture(h_hat_unimer, A[j], j, m, p, log_p, log_q, odds, inverse_odds, log_fact);
     }
+}
 
-    if (exact_tail > 0) {
-        int start_i = max(1, m - exact_tail + 1);
-        double lchoose_nm = log_choose_fast(log_fact, n, m);
-        for (int i = start_i; i <= m; ++i) {
-            h_hat_unimer[i] = est_h_unimer_exact_i(hbar, i, n, m, log_fact, lchoose_nm);
+vector<double> static inline
+precompute_exact_unimer_tail(vector<double>& hbar,
+                             int n,
+                             const vector<int>& points,
+                             size_t interpolation_points,
+                             int tail_width,
+                             const vector<double>& log_fact) {
+    vector<double> exact(interpolation_points * (size_t)tail_width, 0.0);
+    vector<double> aggregate(n + 1, 0.0);
+
+    for (int d = 0; d < tail_width; ++d) {
+        fill(aggregate.begin(), aggregate.end(), 0.0);
+
+        // Normalize by C(n-j,d). The remaining factor is a hypergeometric
+        // probability, so neither intermediate can overflow.
+        for (int j = 1; j <= n - d; ++j) {
+            double weight = 1.0;
+            double total = 0.0;
+            for (int sigma = j; sigma <= n - d; ++sigma) {
+                double h = hbar[(size_t)sigma * (sigma - 1) / 2 + j];
+                if (h > 0.0) total += h * weight;
+                if (sigma < n - d) {
+                    weight *= (double)(n - sigma - d) / (double)(n - sigma);
+                }
+            }
+            aggregate[j] = total;
+        }
+
+        for (size_t q = 0; q < interpolation_points; ++q) {
+            int m = points[q];
+            if (d >= m) continue;
+            int i = m - d;
+            double lchoose_nm = log_choose_fast(log_fact, n, m);
+            double total = 0.0;
+            for (int j = i; j <= n - d; ++j) {
+                if (aggregate[j] <= 0.0) continue;
+                double probability = exp(log_choose_fast(log_fact, j, i)
+                    + log_choose_fast(log_fact, n - j, d)
+                    - lchoose_nm);
+                total += aggregate[j] * probability;
+            }
+            exact[q * (size_t)tail_width + d] = total;
         }
     }
+
+    return exact;
 }
 
 //double static inline 
@@ -453,15 +470,31 @@ hill_cdbg(vector<double> &h_kmer,
     if (use_bernoulli_unimer) log_fact = make_log_factorials(n);
     for (int i = 1; i <= n; i++) h_unimer[i] = h_infix_eq[((i+1)*i/2)];
 
+    size_t interpolation_points = 0;
+    while (interpolation_points < points.size() && points[interpolation_points] < n) {
+        ++interpolation_points;
+    }
+    int exact_tail_width = use_bernoulli_unimer ? min(bernoulli_exact_tail, n) : 0;
+    vector<double> exact_unimer_tail;
+    if (exact_tail_width > 0) {
+        exact_unimer_tail = precompute_exact_unimer_tail(
+            h_infix_eq, n, points, interpolation_points, exact_tail_width, log_fact);
+    }
+
     printf("fit\tm\trichness\texp_entropy\tinv_gini_simp\n");
     //** Interpolation **//
     while (p < points.size() && points[p] < n) {
+        size_t point_index = p;
         int m = points[p++];
         
         double lchoose_nm = use_bernoulli_unimer ? log_choose_fast(log_fact, n, m) : lchoose(n, m);
         if (use_bernoulli_unimer) {
-            est_h_bernoulli_hybrid(h_kmer, n, m, bernoulli_exact_tail, log_fact, h_hat_kmer);
-            est_h_unimer_bernoulli_hybrid(h_infix_eq, n, m, bernoulli_exact_tail, log_fact, h_hat_unimer);
+            est_h_kmer_bernoulli_hybrid(h_kmer, n, m, bernoulli_exact_tail, log_fact, h_hat_kmer);
+            est_h_unimer_bernoulli(h_infix_eq, n, m, log_fact, h_hat_unimer);
+            for (int d = 0; d < exact_tail_width && d < m; ++d) {
+                h_hat_unimer[m - d] = exact_unimer_tail[
+                    point_index * (size_t)exact_tail_width + d];
+            }
         }
 
         for (int i = 1; i <= m; i++) {
