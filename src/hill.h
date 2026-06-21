@@ -30,6 +30,9 @@ struct param_hill_t{
     bool use_bernoulli_unimer = false;
     bool force_exact_cdbg = false;
     int bernoulli_exact_tail = 0;
+    bool bernoulli_tail_set = false;
+    bool use_adaptive_bernoulli_tail = false;
+    double bernoulli_tail_tolerance = 0.001;
 };
 
 struct param_hill_cdbg_t : param_hill_t { 
@@ -244,6 +247,23 @@ log_choose_fast(const vector<double>& log_fact, int n, int k) {
     return log_fact[n] - log_fact[k] - log_fact[n-k];
 }
 
+double static inline
+est_h_fast(vector<double>& h,
+           int i,
+           int n,
+           int m,
+           double lchoose_nm,
+           const vector<double>& log_fact) {
+    double total = 0.0;
+    for (int j = i; j <= n - m + i; ++j) {
+        if (h[j] <= 0.0) continue;
+        total += h[j] * exp(log_choose_fast(log_fact, j, i)
+            + log_choose_fast(log_fact, n - j, m - i)
+            - lchoose_nm);
+    }
+    return total;
+}
+
 vector<double> static inline
 make_log_factorials(int n) {
     vector<double> log_fact(n + 1, 0.0);
@@ -350,6 +370,47 @@ est_h_unimer_bernoulli(vector<double> &hbar,
     }
 }
 
+void static inline
+exact_unimer_aggregate_at_depth(vector<double>& hbar,
+                                int n,
+                                int d,
+                                vector<double>& aggregate) {
+    fill(aggregate.begin(), aggregate.end(), 0.0);
+
+    // Normalize by C(n-j,d). The remaining factor is a hypergeometric
+    // probability, so neither intermediate can overflow.
+    for (int j = 1; j <= n - d; ++j) {
+        double weight = 1.0;
+        double total = 0.0;
+        for (int sigma = j; sigma <= n - d; ++sigma) {
+            double h = hbar[(size_t)sigma * (sigma - 1) / 2 + j];
+            if (h > 0.0) total += h * weight;
+            if (sigma < n - d) {
+                weight *= (double)(n - sigma - d) / (double)(n - sigma);
+            }
+        }
+        aggregate[j] = total;
+    }
+}
+
+double static inline
+exact_unimer_at_depth(const vector<double>& aggregate,
+                      int n,
+                      int m,
+                      int d,
+                      double lchoose_nm,
+                      const vector<double>& log_fact) {
+    int i = m - d;
+    double total = 0.0;
+    for (int j = i; j <= n - d; ++j) {
+        if (aggregate[j] <= 0.0) continue;
+        total += aggregate[j] * exp(log_choose_fast(log_fact, j, i)
+            + log_choose_fast(log_fact, n - j, d)
+            - lchoose_nm);
+    }
+    return total;
+}
+
 vector<double> static inline
 precompute_exact_unimer_tail(vector<double>& hbar,
                              int n,
@@ -361,37 +422,13 @@ precompute_exact_unimer_tail(vector<double>& hbar,
     vector<double> aggregate(n + 1, 0.0);
 
     for (int d = 0; d < tail_width; ++d) {
-        fill(aggregate.begin(), aggregate.end(), 0.0);
-
-        // Normalize by C(n-j,d). The remaining factor is a hypergeometric
-        // probability, so neither intermediate can overflow.
-        for (int j = 1; j <= n - d; ++j) {
-            double weight = 1.0;
-            double total = 0.0;
-            for (int sigma = j; sigma <= n - d; ++sigma) {
-                double h = hbar[(size_t)sigma * (sigma - 1) / 2 + j];
-                if (h > 0.0) total += h * weight;
-                if (sigma < n - d) {
-                    weight *= (double)(n - sigma - d) / (double)(n - sigma);
-                }
-            }
-            aggregate[j] = total;
-        }
-
+        exact_unimer_aggregate_at_depth(hbar, n, d, aggregate);
         for (size_t q = 0; q < interpolation_points; ++q) {
             int m = points[q];
             if (d >= m) continue;
-            int i = m - d;
             double lchoose_nm = log_choose_fast(log_fact, n, m);
-            double total = 0.0;
-            for (int j = i; j <= n - d; ++j) {
-                if (aggregate[j] <= 0.0) continue;
-                double probability = exp(log_choose_fast(log_fact, j, i)
-                    + log_choose_fast(log_fact, n - j, d)
-                    - lchoose_nm);
-                total += aggregate[j] * probability;
-            }
-            exact[q * (size_t)tail_width + d] = total;
+            exact[q * (size_t)tail_width + d] = exact_unimer_at_depth(
+                aggregate, n, m, d, lchoose_nm, log_fact);
         }
     }
 
@@ -448,15 +485,208 @@ print_hill(int m, vector<double> &h) {
     fflush(stdout);
 }
 
+struct hill_sums_t {
+    double richness = 0.0;
+    double incidence = 0.0;
+    double incidence_log_frequency = 0.0;
+    double squared_frequency = 0.0;
+};
+
+void static inline
+add_hill_bin(hill_sums_t& sums, int i, double value) {
+    sums.richness += value;
+    sums.incidence += (double)i * value;
+    if (i > 1) {
+        sums.incidence_log_frequency += (double)i * log((double)i) * value;
+    }
+    sums.squared_frequency += (double)i * (double)i * value;
+}
+
+void static inline
+print_hill_sums(const hill_sums_t& sums) {
+    double entropy = log(sums.incidence)
+        - sums.incidence_log_frequency / sums.incidence;
+    double inverse_gini_simpson = sums.incidence * sums.incidence
+        / sums.squared_frequency;
+    printf("%.2f\t%.2f\t%.2f\n",
+           sums.richness, exp(entropy), inverse_gini_simpson);
+    fflush(stdout);
+}
+
+struct adaptive_tail_point_t {
+    int m = 0;
+    double lchoose_nm = 0.0;
+    int tail_width = 0;
+    hill_sums_t sums;
+    int similar_bins = 0;
+    int exact_bins = 0;
+    int negative_bins = 0;
+    double negative_mass = 0.0;
+    bool active = true;
+    bool converged = false;
+};
+
+void static inline
+replace_adaptive_bin(adaptive_tail_point_t& point,
+                     int i,
+                     double bernoulli,
+                     double exact) {
+    add_hill_bin(point.sums, i, exact - bernoulli);
+    if (bernoulli < -EPSILON) {
+        --point.negative_bins;
+        point.negative_mass += bernoulli;
+    }
+    if (exact < -EPSILON) {
+        ++point.negative_bins;
+        point.negative_mass -= exact;
+    }
+}
+
+bool static inline
+adaptive_hill_values_are_close(const hill_sums_t& before,
+                               const hill_sums_t& after,
+                               double tolerance) {
+    double before_entropy = exp(log(before.incidence)
+        - before.incidence_log_frequency / before.incidence);
+    double after_entropy = exp(log(after.incidence)
+        - after.incidence_log_frequency / after.incidence);
+    double before_gini = before.incidence * before.incidence
+        / before.squared_frequency;
+    double after_gini = after.incidence * after.incidence
+        / after.squared_frequency;
+
+    double richness_scale = max(1.0, max(abs(before.richness), abs(after.richness)));
+    double entropy_scale = max(1.0, max(abs(before_entropy), abs(after_entropy)));
+    double gini_scale = max(1.0, max(abs(before_gini), abs(after_gini)));
+    return abs(after.richness - before.richness) <= tolerance * richness_scale
+        && abs(after_entropy - before_entropy) <= tolerance * entropy_scale
+        && abs(after_gini - before_gini) <= tolerance * gini_scale;
+}
+
+vector<adaptive_tail_point_t> static inline
+adaptive_bernoulli_interpolation(vector<double>& h_kmer,
+                                 vector<double>& h_infix_eq,
+                                 int n,
+                                 const vector<int>& points,
+                                 size_t interpolation_points,
+                                 int max_tail,
+                                 double tolerance,
+                                 const vector<double>& log_fact) {
+    const int required_similar_bins = 3;
+    vector<adaptive_tail_point_t> states(interpolation_points);
+    vector<double> bernoulli_tails(
+        interpolation_points * (size_t)max_tail, 0.0);
+    vector<double> h_hat_kmer(n + 1, 0.0);
+    vector<double> h_hat_unimer(n + 1, 0.0);
+
+    for (size_t q = 0; q < interpolation_points; ++q) {
+        adaptive_tail_point_t& state = states[q];
+        state.m = points[q];
+        state.lchoose_nm = log_choose_fast(log_fact, n, state.m);
+        state.tail_width = min(max_tail, state.m);
+        state.active = state.tail_width > 0;
+
+        est_h_kmer_bernoulli_hybrid(
+            h_kmer, n, state.m, 0, log_fact, h_hat_kmer);
+        est_h_unimer_bernoulli(
+            h_infix_eq, n, state.m, log_fact, h_hat_unimer);
+
+        for (int i = 1; i <= state.m; ++i) {
+            double unitig = h_hat_kmer[i] - h_hat_unimer[i];
+            add_hill_bin(state.sums, i, unitig);
+            if (unitig < -EPSILON) {
+                ++state.negative_bins;
+                state.negative_mass -= unitig;
+            }
+            int d = state.m - i;
+            if (d < state.tail_width) {
+                bernoulli_tails[q * (size_t)max_tail + d] = unitig;
+            }
+        }
+    }
+
+    size_t active_points = 0;
+    for (size_t q = 0; q < states.size(); ++q) {
+        if (states[q].active) ++active_points;
+    }
+
+    vector<double> aggregate(n + 1, 0.0);
+    for (int d = 0; d < max_tail && active_points > 0; ++d) {
+        bool any_at_depth = false;
+        for (size_t q = 0; q < states.size(); ++q) {
+            if (states[q].active && d < states[q].tail_width) {
+                any_at_depth = true;
+                break;
+            }
+        }
+        if (!any_at_depth) break;
+
+        exact_unimer_aggregate_at_depth(h_infix_eq, n, d, aggregate);
+        for (size_t q = 0; q < states.size(); ++q) {
+            adaptive_tail_point_t& state = states[q];
+            if (!state.active || d >= state.tail_width) continue;
+
+            int i = state.m - d;
+            double exact_kmer = est_h_fast(
+                h_kmer, i, n, state.m, state.lchoose_nm, log_fact);
+            double exact_unimer = exact_unimer_at_depth(
+                aggregate, n, state.m, d, state.lchoose_nm, log_fact);
+            double exact_unitig = exact_kmer - exact_unimer;
+            double bernoulli_unitig = bernoulli_tails[
+                q * (size_t)max_tail + d];
+            hill_sums_t before = state.sums;
+            replace_adaptive_bin(state, i, bernoulli_unitig, exact_unitig);
+            ++state.exact_bins;
+
+            if (adaptive_hill_values_are_close(before, state.sums, tolerance)) {
+                ++state.similar_bins;
+            } else {
+                state.similar_bins = 0;
+            }
+
+            if (state.similar_bins >= required_similar_bins) {
+                state.active = false;
+                state.converged = true;
+                --active_points;
+            } else if (state.exact_bins == state.tail_width) {
+                state.active = false;
+                state.converged = state.exact_bins == state.m;
+                --active_points;
+            }
+        }
+    }
+
+    if (states.empty()) return states;
+
+    int min_used = max_tail;
+    int max_used = 0;
+    int reached_cap = 0;
+    double total_used = 0.0;
+    for (size_t q = 0; q < states.size(); ++q) {
+        min_used = min(min_used, states[q].exact_bins);
+        max_used = max(max_used, states[q].exact_bins);
+        total_used += states[q].exact_bins;
+        if (!states[q].converged) ++reached_cap;
+    }
+    double mean_used = total_used / (double)states.size();
+    fprintf(stderr,
+            "Info: adaptive Bernoulli tail used %d-%d exact bins (mean %.2f); %d/%zu points reached their cap.\n",
+            min_used, max_used, mean_used, reached_cap, states.size());
+
+    return states;
+}
+
 void 
 hill_cdbg(vector<double> &h_kmer,
           vector<double> &h_infix_eq,
           vector<int> &points,
-          int bernoulli_exact_tail = -1) {
+          int bernoulli_exact_tail = -1,
+          double adaptive_tolerance = -1.0) {
     int n = (int)h_kmer.size()-1;
     int m = points[points.size()-1];
     size_t p = 0;
     bool use_bernoulli_unimer = bernoulli_exact_tail >= 0;
+    bool use_adaptive_tail = use_bernoulli_unimer && adaptive_tolerance > 0.0;
     double sum_h = 0;
     for (int i = 1; i <= n; ++i) {
         sum_h += h_kmer[i];
@@ -476,14 +706,31 @@ hill_cdbg(vector<double> &h_kmer,
     }
     int exact_tail_width = use_bernoulli_unimer ? min(bernoulli_exact_tail, n) : 0;
     vector<double> exact_unimer_tail;
-    if (exact_tail_width > 0) {
+    if (exact_tail_width > 0 && !use_adaptive_tail) {
         exact_unimer_tail = precompute_exact_unimer_tail(
             h_infix_eq, n, points, interpolation_points, exact_tail_width, log_fact);
     }
 
     printf("fit\tm\trichness\texp_entropy\tinv_gini_simp\n");
     //** Interpolation **//
-    while (p < points.size() && points[p] < n) {
+    if (use_adaptive_tail) {
+        vector<adaptive_tail_point_t> states = adaptive_bernoulli_interpolation(
+            h_kmer, h_infix_eq, n, points, interpolation_points,
+            exact_tail_width, adaptive_tolerance, log_fact);
+        for (size_t q = 0; q < states.size(); ++q) {
+            adaptive_tail_point_t& state = states[q];
+            if (state.negative_bins > 0) {
+                fprintf(stderr,
+                        "Warn: Bernoulli cdbg interpolation has %d negative bins at m=%d (negative mass %.6g); Hill numbers may be invalid.\n",
+                        state.negative_bins, state.m, state.negative_mass);
+            }
+            printf("int\t%d\t", state.m);
+            print_hill_sums(state.sums);
+        }
+        p = interpolation_points;
+    }
+
+    while (!use_adaptive_tail && p < points.size() && points[p] < n) {
         size_t point_index = p;
         int m = points[p++];
         
@@ -642,7 +889,7 @@ param_hill_t parse_common_cli(int argc, char *argv[]){
 
     int c;
     ketopt_t o = KETOPT_INIT;
-    while ((c = ketopt(&o, argc, argv, 1, "p:f:B:E", 0)) >= 0) {
+    while ((c = ketopt(&o, argc, argv, 1, "p:f:B:A:E", 0)) >= 0) {
         if (c == 'p') params.num_points = atoi(o.arg); 
         if (c == 'f') {
             params.points_file = o.arg;
@@ -650,7 +897,17 @@ param_hill_t parse_common_cli(int argc, char *argv[]){
         }
         if (c == 'B') {
             params.use_bernoulli_unimer = true;
+            params.bernoulli_tail_set = true;
             params.bernoulli_exact_tail = atoi(o.arg);
+        }
+        if (c == 'A') {
+            char *end = NULL;
+            params.use_bernoulli_unimer = true;
+            params.use_adaptive_bernoulli_tail = true;
+            params.bernoulli_tail_tolerance = strtod(o.arg, &end);
+            if (end == o.arg || *end != '\0') {
+                params.err = true;
+            }
         }
         if (c == 'E') params.force_exact_cdbg = true;
     }
@@ -678,7 +935,8 @@ void print_hill_usage() {
     fprintf(stderr, "  -p INT     number of sample points; 0 outputs all points [30]\n");
     fprintf(stderr, "  -f PATH    file containing one sample point per line\n");
     fprintf(stderr, "cdbg interpolation options:\n");
-    fprintf(stderr, "  -B INT     Bernoulli hybrid with this many exact right-tail bins [5]\n");
+    fprintf(stderr, "  -B INT     maximum exact right-tail bins [5; 20 with -A]\n");
+    fprintf(stderr, "  -A FLOAT   stop after 3 tail corrections each change all Hill numbers by <= FLOAT\n");
     fprintf(stderr, "  -E         use exact interpolation instead of the Bernoulli hybrid\n");
 }
 
@@ -710,15 +968,28 @@ param_hill_t cli_hill(int argc, char *argv[]) {
 
 void validate_hill_cdbg_params(param_hill_cdbg_t &params, int argc, char *argv[]) {
     if (params.force_exact_cdbg && params.use_bernoulli_unimer) {
-        fprintf(stderr, "Error: -E and -B cannot be used together.\n");
+        fprintf(stderr, "Error: -E cannot be used with -B or -A.\n");
         params.err = true;
     }
     if (!params.force_exact_cdbg && !params.use_bernoulli_unimer) {
         params.use_bernoulli_unimer = true;
         params.bernoulli_exact_tail = 5;
     }
+    if (params.use_adaptive_bernoulli_tail && !params.bernoulli_tail_set) {
+        params.bernoulli_exact_tail = 20;
+    }
     if (params.bernoulli_exact_tail < 0) {
         fprintf(stderr, "Error: -B must be >= 0.\n");
+        params.err = true;
+    }
+    if (params.use_adaptive_bernoulli_tail &&
+        (!(params.bernoulli_tail_tolerance > 0.0) ||
+         !(params.bernoulli_tail_tolerance < 1.0))) {
+        fprintf(stderr, "Error: -A must be > 0 and < 1.\n");
+        params.err = true;
+    }
+    if (params.use_adaptive_bernoulli_tail && params.bernoulli_exact_tail == 0) {
+        fprintf(stderr, "Error: adaptive interpolation requires -B > 0.\n");
         params.err = true;
     }
 
@@ -751,7 +1022,10 @@ void run_hill_cdbg(param_hill_cdbg_t &params) {
     update_params(params, h_kmer);
     sample_points(params);
     if (params.use_bernoulli_unimer) {
-        hill_cdbg(h_kmer, h_infix_eq, params.points, params.bernoulli_exact_tail);
+        double adaptive_tolerance = params.use_adaptive_bernoulli_tail
+            ? params.bernoulli_tail_tolerance : -1.0;
+        hill_cdbg(h_kmer, h_infix_eq, params.points,
+                  params.bernoulli_exact_tail, adaptive_tolerance);
     } else {
         hill_cdbg(h_kmer, h_infix_eq, params.points);
     }

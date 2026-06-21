@@ -222,6 +222,18 @@ By default, interpolation uses the Bernoulli-hybrid approximation with exact
 values for the last 5 bins (`-B 5`). Use `-B INT` to change the exact right
 tail, or `-E` to force the original exact interpolation.
 
+Adaptive interpolation stops before the `-B` limit after three consecutive
+exact tail corrections each change richness, exponential entropy, and inverse
+Gini--Simpson by at most the `-A` relative tolerance. For example:
+
+```bash
+./pangrowth hill -B 20 -A 0.001 ecoli_hist.txt ecoli_hist_infix.txt
+```
+
+If `-B` is omitted with `-A`, its limit is 20. The adaptive criterion controls
+the effect of each additional exact bin; it is not a bound on the final error
+relative to fully exact interpolation.
+
 The output format is identical to `hill`: a tab-separated table with columns `fit`, `m`, `richness`, `exp_entropy`, `inv_gini_simp`.
 
 The previous `hist_infix`, `hist_infix_ggcat`, and `hill_cdbg` commands remain
