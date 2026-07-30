@@ -1,0 +1,182 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "$id": "https://github.com/gi-bielefeld/pangrowth/blob/clown-v0.1.0/clowm/nextflow_schema.json",
+  "title": "pangrowth workflow parameters",
+  "description": "Estimate pangenome growth, core size, and Hill-number diversity from a collection of genomes.",
+  "type": "object",
+  "definitions": {
+    "input_output": {
+      "title": "Input / Output",
+      "description": "Required input and output paths.",
+      "type": "object",
+      "fa_icon": "fas fa-file-arrow-right",
+      "properties": {
+        "input": {
+          "type": "string",
+          "format": "file-path",
+          "fa_icon": "fas fa-file-zipper",
+          "description": "Archive containing one FASTA file per genome",
+          "help_text": "Upload a .zip, .tar.gz, or .tgz archive containing at least three genome FASTA files. Files may be gzip-compressed and may be arranged in subdirectories. Supported names end in .fa, .fasta, .fna, or .ffn, optionally followed by .gz. Each file is treated as one genome."
+        },
+        "outdir": {
+          "type": "string",
+          "format": "directory-path",
+          "fa_icon": "fas fa-folder-open",
+          "description": "Output directory",
+          "help_text": "Directory in which all result tables, plots, fit summaries, and the workflow log are written."
+        }
+      },
+      "required": [
+        "input",
+        "outdir"
+      ]
+    },
+    "analysis": {
+      "title": "Analysis Parameters",
+      "description": "Parameters controlling k-mer counting and the reported analyses.",
+      "type": "object",
+      "fa_icon": "fas fa-chart-line",
+      "properties": {
+        "kmer": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 31,
+          "default": 17,
+          "description": "k-mer length",
+          "help_text": "Length of nucleotide k-mers used to represent the genomes. Smaller values may be appropriate for short or heterogeneous sequences."
+        },
+        "minimum_count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 255,
+          "default": 1,
+          "description": "Minimum within-genome k-mer count",
+          "help_text": "A k-mer must occur at least this many times within a genome to be considered present. Values above one can reduce sequencing-error noise in read data."
+        },
+        "quorum": {
+          "type": "number",
+          "minimum": 0.01,
+          "maximum": 1.0,
+          "default": 1.0,
+          "description": "Core-genome quorum",
+          "help_text": "Minimum fraction of genomes in which an item must occur to count toward the core. A value of 1.0 computes the strict core; 0.9 computes a 90% soft core."
+        },
+        "canonical": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use canonical k-mers",
+          "help_text": "Treat each k-mer and its reverse complement as the same item. This is recommended for ordinary nucleotide genome data."
+        },
+        "cdbg": {
+          "type": "boolean",
+          "default": false,
+          "description": "Compute compacted de Bruijn graph diversity",
+          "help_text": "Also calculate the infix-equivalent histogram and use it with the k-mer histogram to estimate Hill numbers for the colored compacted de Bruijn graph. This requires an additional scan of the input."
+        },
+        "create_plots": {
+          "type": "boolean",
+          "default": true,
+          "description": "Create PDF plots",
+          "help_text": "Generate PDF plots for the frequency histogram, expected pangenome growth, and expected core size. Numerical output is always generated."
+        }
+      }
+    },
+    "plotting": {
+      "title": "Plot Parameters",
+      "description": "Optional histogram display settings.",
+      "type": "object",
+      "fa_icon": "fas fa-chart-column",
+      "properties": {
+        "histogram_normalize_x": {
+          "type": "boolean",
+          "default": false,
+          "description": "Normalize histogram x-axis",
+          "help_text": "Display k-mer frequency as a fraction of the number of genomes rather than as an absolute genome count."
+        },
+        "histogram_normalize_y": {
+          "type": "string",
+          "enum": [
+            "none",
+            "multiplicity",
+            "percentage",
+            "both"
+          ],
+          "default": "none",
+          "description": "Histogram y-axis normalization",
+          "help_text": "Multiplicity weights every bin by its genome frequency; percentage scales counts to sum to one; both applies multiplicity weighting followed by percentage scaling."
+        }
+      }
+    },
+    "expert": {
+      "title": "Expert Parameters",
+      "description": "Low-level counting and Hill-number interpolation settings.",
+      "type": "object",
+      "fa_icon": "fas fa-graduation-cap",
+      "properties": {
+        "suffix_size": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 12,
+          "default": 4,
+          "hidden": true,
+          "description": "Hashtable suffix size",
+          "help_text": "Number of suffix bits used to partition the k-mer hashtable. Larger values create more partitions and have a substantial memory overhead."
+        },
+        "account_telomeres": {
+          "type": "boolean",
+          "default": false,
+          "hidden": true,
+          "description": "Account for telomeres when compacting",
+          "help_text": "Treat sequence ends as unitig-breaking telomeres. This option has an effect only when compacted de Bruijn graph diversity is enabled."
+        },
+        "hill_points": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000,
+          "default": 30,
+          "hidden": true,
+          "description": "Number of Hill-number sample points",
+          "help_text": "Number of interpolation and extrapolation sample points. Use 0 to report every point."
+        },
+        "hill_exact_tail": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000,
+          "default": 5,
+          "hidden": true,
+          "description": "Maximum exact right-tail bins",
+          "help_text": "Maximum number of right-tail bins corrected exactly by the Bernoulli-hybrid CDBG interpolation. This option applies only when CDBG diversity is enabled and exact interpolation is disabled."
+        },
+        "hill_adaptive_tolerance": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 1,
+          "hidden": true,
+          "description": "Adaptive CDBG tail tolerance",
+          "help_text": "Stop exact-tail correction after three consecutive corrections each change all Hill numbers by at most this relative tolerance. Leave unset to disable adaptive stopping."
+        },
+        "hill_force_exact": {
+          "type": "boolean",
+          "default": false,
+          "hidden": true,
+          "description": "Use exact CDBG interpolation",
+          "help_text": "Use the original exact interpolation rather than the faster Bernoulli-hybrid approximation. This option applies only when CDBG diversity is enabled."
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "$ref": "#/definitions/input_output"
+    },
+    {
+      "$ref": "#/definitions/analysis"
+    },
+    {
+      "$ref": "#/definitions/plotting"
+    },
+    {
+      "$ref": "#/definitions/expert"
+    }
+  ]
+}

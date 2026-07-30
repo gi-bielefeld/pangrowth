@@ -1,0 +1,17 @@
+.git
+.github
+.agents
+.codex
+build
+build-ggcat
+build-container
+build-rmath
+data
+png
+test
+third_party
+HowToCloWM.md
+*.pdf
+*.png
+__pycache__
+*.pyc
