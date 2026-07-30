@@ -28,6 +28,7 @@ FROM python:3.10-slim-bookworm AS runner
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends \
         libgomp1 \
+        procps \
         tar \
         zlib1g \
     && rm -rf /var/lib/apt/lists/*
