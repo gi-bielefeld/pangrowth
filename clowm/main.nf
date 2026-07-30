@@ -3,7 +3,7 @@ nextflow.enable.dsl = 2
 process PANGROWTH {
     tag "${archive.simpleName}"
     label 'highmemMedium'
-    container 'ghcr.io/gi-bielefeld/pangrowth:clowm-v0.1.0'
+    container 'ghcr.io/gi-bielefeld/pangrowth:clowm'
 
     publishDir params.outdir, mode: 'copy'
 
