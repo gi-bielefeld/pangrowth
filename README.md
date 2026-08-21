@@ -166,7 +166,7 @@ Hill numbers measure pangenome diversity (species richness, exponential entropy,
 - `-p INT` sets the number of sample points (default: 30); use `-p 0` to output all points
 - `-f FILE` reads sample points from a file (one integer per line), overriding `-p`
 
-The output is a tab-separated table with columns: `fit`, `m`, `richness`, `exp_entropy`, `inv_gini_simp`, where `fit` is `int` (interpolation), `obs` (observed), or `ext` (extrapolation) and `m` is the number of genomes.
+The output is a tab-separated table with columns: `fit`, `m`, `richness`, `exp_entropy`, `inv_simpson`, where `fit` is `int` (interpolation), `obs` (observed), or `ext` (extrapolation) and `m` is the number of genomes.
 
 ### Colored compacted de Bruijn graph
 
@@ -224,7 +224,7 @@ tail, or `-E` to force the original exact interpolation.
 
 Adaptive interpolation stops before the `-B` limit after three consecutive
 exact tail corrections each change richness, exponential entropy, and inverse
-Gini--Simpson by at most the `-A` relative tolerance. For example:
+Simpson by at most the `-A` relative tolerance. For example:
 
 ```bash
 ./pangrowth hill -B 20 -A 0.001 ecoli_hist.txt ecoli_hist_infix.txt
@@ -234,7 +234,7 @@ If `-B` is omitted with `-A`, its limit is 20. The adaptive criterion controls
 the effect of each additional exact bin; it is not a bound on the final error
 relative to fully exact interpolation.
 
-The output format is identical to `hill`: a tab-separated table with columns `fit`, `m`, `richness`, `exp_entropy`, `inv_gini_simp`.
+The output format is identical to `hill`: a tab-separated table with columns `fit`, `m`, `richness`, `exp_entropy`, `inv_simpson`.
 
 The previous `hist_infix`, `hist_infix_ggcat`, and `hill_cdbg` commands remain
 available as compatibility aliases.
