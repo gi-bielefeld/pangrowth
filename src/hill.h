@@ -167,17 +167,17 @@ exp_entropy(int m, vector<double> &h) {
 }
 
 double static inline
-inv_gini_simpson(int m, vector<double> &h){
-    double gini_simpson = 0;
+inv_simpson(int m, vector<double> &h){
+    double simpson_concentration = 0;
     double U_hat_t = 0;
     for (int i = 1; i <= m; i++) {
         U_hat_t += i*h[i];
     }
     for (int i = 1; i <= m; i++) {
         double x = (double)i/(double)U_hat_t;
-        gini_simpson += x*x*h[i];
+        simpson_concentration += x*x*h[i];
     }
-    return 1/gini_simpson;
+    return 1/simpson_concentration;
 }
 
 //double static inline 
@@ -481,7 +481,7 @@ print_hill(int m, vector<double> &h) {
     fflush(stdout);
     printf("%.2f\t", exp_entropy(m, h));
     fflush(stdout);
-    printf("%.2f\n", inv_gini_simpson(m, h));
+    printf("%.2f\n", inv_simpson(m, h));
     fflush(stdout);
 }
 
@@ -506,10 +506,10 @@ void static inline
 print_hill_sums(const hill_sums_t& sums) {
     double entropy = log(sums.incidence)
         - sums.incidence_log_frequency / sums.incidence;
-    double inverse_gini_simpson = sums.incidence * sums.incidence
+    double inverse_simpson = sums.incidence * sums.incidence
         / sums.squared_frequency;
     printf("%.2f\t%.2f\t%.2f\n",
-           sums.richness, exp(entropy), inverse_gini_simpson);
+           sums.richness, exp(entropy), inverse_simpson);
     fflush(stdout);
 }
 
@@ -550,17 +550,19 @@ adaptive_hill_values_are_close(const hill_sums_t& before,
         - before.incidence_log_frequency / before.incidence);
     double after_entropy = exp(log(after.incidence)
         - after.incidence_log_frequency / after.incidence);
-    double before_gini = before.incidence * before.incidence
+    double before_inverse_simpson = before.incidence * before.incidence
         / before.squared_frequency;
-    double after_gini = after.incidence * after.incidence
+    double after_inverse_simpson = after.incidence * after.incidence
         / after.squared_frequency;
 
     double richness_scale = max(1.0, max(abs(before.richness), abs(after.richness)));
     double entropy_scale = max(1.0, max(abs(before_entropy), abs(after_entropy)));
-    double gini_scale = max(1.0, max(abs(before_gini), abs(after_gini)));
+    double inverse_simpson_scale = max(1.0,
+        max(abs(before_inverse_simpson), abs(after_inverse_simpson)));
     return abs(after.richness - before.richness) <= tolerance * richness_scale
         && abs(after_entropy - before_entropy) <= tolerance * entropy_scale
-        && abs(after_gini - before_gini) <= tolerance * gini_scale;
+        && abs(after_inverse_simpson - before_inverse_simpson)
+            <= tolerance * inverse_simpson_scale;
 }
 
 vector<adaptive_tail_point_t> static inline
@@ -711,7 +713,7 @@ hill_cdbg(vector<double> &h_kmer,
             h_infix_eq, n, points, interpolation_points, exact_tail_width, log_fact);
     }
 
-    printf("fit\tm\trichness\texp_entropy\tinv_gini_simp\n");
+    printf("fit\tm\trichness\texp_entropy\tinv_simpson\n");
     //** Interpolation **//
     if (use_adaptive_tail) {
         vector<adaptive_tail_point_t> states = adaptive_bernoulli_interpolation(
@@ -837,7 +839,7 @@ hill(vector<double> &h_kmer, vector<int> &points) {
     //1-based index
     vector<double> h_hat_kmer(m+1);
 
-    printf("fit\tm\trichness\texp_entropy\tinv_gini_simp\n");
+    printf("fit\tm\trichness\texp_entropy\tinv_simpson\n");
     //** Interpolation **//
     while (points[p] < n) {
         int m = points[p++];

@@ -171,7 +171,7 @@ int main(int argc, char** argv) {
         fprintf(stderr, "  growth:\n");
         fprintf(stderr, "       Outputs the pangenome growth graph from the histogram (or panmatrix)\n");
         fprintf(stderr, "  hill:\n");
-        fprintf(stderr, "       Outputs Hill's numbers for richness, exp. entropy and inv. gini-simpson index.\n"
+        fprintf(stderr, "       Outputs Hill's numbers for richness, exp. entropy and inverse Simpson index.\n"
                         "       It takes one k-mer histogram, or k-mer and infix histograms for cdbg.\n"
                         "       Options: -p <int>  Number of points to sample (default: 30)\n");
         fprintf(stderr, "  core:\n");
