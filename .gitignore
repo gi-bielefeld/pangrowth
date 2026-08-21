@@ -22,3 +22,5 @@
 benchmark
 .aider*
 test/
+.nextflow/
+.nextflow.log*
