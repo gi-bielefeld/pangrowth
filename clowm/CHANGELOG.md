@@ -16,6 +16,7 @@ and workflow versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+* Hill-number PDF with interpolation, observed, and extrapolation styling.
 * FASTA list input with automatic resolution of relative entries, including
   bucket-root paths in CloWM. Referenced genomes are staged by Nextflow into
   separate directories to avoid filename collisions.

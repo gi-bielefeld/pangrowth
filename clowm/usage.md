@@ -156,5 +156,5 @@ to emit every point.
 The default Bernoulli-hybrid interpolation calculates five right-tail bins
 exactly. The limit can be changed, and an adaptive relative tolerance can stop
 the corrections once three consecutive corrections change richness,
-exponential entropy, and inverse Gini–Simpson diversity by no more than that
+exponential entropy, and inverse Simpson diversity by no more than that
 tolerance. Exact interpolation is available but may be considerably slower.

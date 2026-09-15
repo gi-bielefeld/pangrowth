@@ -7,7 +7,7 @@ genome archive or a list of nucleotide FASTA paths, this workflow:
 * calculates the exact expected pangenome growth curve;
 * calculates the expected strict or quorum-based core-genome curve; and
 * reports Hill-number diversity (richness, exponential entropy, and inverse
-  Gini–Simpson diversity).
+  Simpson diversity).
 
 It can optionally estimate diversity on the colored compacted de Bruijn graph
 by combining *k*-mer and infix-equivalent frequency histograms. PDF plots and

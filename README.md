@@ -42,9 +42,14 @@ cmake -B build
 cmake --build build -j 8
 ```
 
-This builds the main `pangrowth` executable. The default build does not link
-the ggcat C++ API. The executable is `build/pangrowth`; either call it by that
-path, add it to `PATH`, or run examples from inside the build directory.
+This builds the bundled Rmath library and the main `pangrowth` executable. You
+do not need to install Rmath separately. The default build does not link the
+ggcat C++ API. The executable is `build/pangrowth`; either call it by that path,
+add it to `PATH`, or run examples from inside the build directory.
+
+To use an Rmath 1.0.0 package already installed on the system instead, configure
+with `-DPANGROWTH_USE_SYSTEM_RMATH=ON` and, if necessary, point
+`CMAKE_PREFIX_PATH` or `Rmath_DIR` at its installation.
 
 Optional ggcat-enabled build:
 
@@ -167,6 +172,20 @@ Hill numbers measure pangenome diversity (species richness, exponential entropy,
 - `-f FILE` reads sample points from a file (one integer per line), overriding `-p`
 
 The output is a tab-separated table with columns: `fit`, `m`, `richness`, `exp_entropy`, `inv_simpson`, where `fit` is `int` (interpolation), `obs` (observed), or `ext` (extrapolation) and `m` is the number of genomes.
+
+Plot the three Hill-number measures with solid interpolation, the observed
+sample as a point, and dashed extrapolation:
+
+```bash
+python scripts/plot_hill.py hill.tsv hill.pdf
+```
+
+Several Hill tables can be compared in the same figure. Each series is named
+after its input file (without the directory):
+
+```bash
+python scripts/plot_hill.py sample_a.tsv sample_b.tsv hill.pdf
+```
 
 ### Colored compacted de Bruijn graph
 

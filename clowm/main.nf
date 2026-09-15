@@ -69,6 +69,7 @@ process PANGROWTH {
     path 'pangrowth_growth.txt'
     path 'pangrowth_core.txt'
     path 'pangrowth_hill.tsv'
+    path 'pangrowth_hill.pdf', optional: true
     path 'pangrowth_hist.pdf', optional: true
     path 'pangrowth_growth.pdf', optional: true
     path 'pangrowth_core.pdf', optional: true
@@ -163,6 +164,10 @@ process PANGROWTH {
 
     if ${params.create_plots}; then
         echo "Creating plots" >> pangrowth.log
+        if ! plot_hill.py pangrowth_hill.tsv pangrowth_hill.pdf >> pangrowth.log 2>&1; then
+            echo "WARNING: Hill-number plot generation failed." >> pangrowth.log
+            rm -f pangrowth_hill.pdf
+        fi
         if ! plot_hist.py ${plotNormXArg} --norm_y=${params.histogram_normalize_y} \
             pangrowth_hist.txt pangrowth_hist.pdf >> pangrowth.log 2>&1; then
             echo "WARNING: Histogram plot generation failed." >> pangrowth.log
