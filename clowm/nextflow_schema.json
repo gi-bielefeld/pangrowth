@@ -14,9 +14,21 @@
         "input": {
           "type": "string",
           "format": "file-path",
-          "fa_icon": "fas fa-file-zipper",
-          "description": "Archive containing one FASTA file per genome",
-          "help_text": "Upload a .zip, .tar.gz, or .tgz archive containing at least three genome FASTA files. Files may be gzip-compressed and may be arranged in subdirectories. Supported names end in .fa, .fasta, .fna, or .ffn, optionally followed by .gz. Each file is treated as one genome."
+          "fa_icon": "fas fa-file",
+          "description": "Genome archive or FASTA list file",
+          "help_text": "Select an archive (.zip, .tar.gz, or .tgz) or a text file such as all_list.txt, and choose the matching input type. A list contains one FASTA path per line. At least three genomes are required. Supported FASTA names end in .fa, .fasta, .fna, or .ffn, optionally followed by .gz."
+        },
+        "input_type": {
+          "type": "string",
+          "enum": ["archive", "list"],
+          "default": "archive",
+          "description": "Input type",
+          "help_text": "Choose archive for compressed genome collections, or list for a text file containing one FASTA path per line. Nextflow stages all listed genomes before analysis."
+        },
+        "list_base": {
+          "type": "string",
+          "description": "Base path for relative FASTA list entries",
+          "help_text": "Only used for list input. Leave empty to resolve paths relative to the list file's directory. For bucket-root paths such as yeast/cerevisiae-n81/GCA_.../genomic.fna, enter s3://YOUR-BUCKET/. Full s3:// paths are used unchanged. All genomes must be readable using the run's S3 credentials and provider. For local runs, a local directory is also accepted."
         },
         "outdir": {
           "type": "string",

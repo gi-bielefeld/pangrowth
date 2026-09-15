@@ -1,14 +1,54 @@
 nextflow.enable.dsl = 2
 
+def shellQuote(value) {
+    return "'" + value.toString().replace("'", "'\"'\"'") + "'"
+}
+
+def readFastaList(inputList, baseValue) {
+    def base = baseValue ? file(baseValue, glob: false) : inputList.parent
+    def inputUri = inputList.toUri()
+    def genomes = []
+    def seen = new HashSet()
+    inputList.readLines().eachWithIndex { rawLine, index ->
+        def entry = rawLine.trim()
+        if (entry && !entry.startsWith('#')) {
+            if (entry.contains('://') && !entry.startsWith('s3://')) {
+                error("FASTA list line ${index + 1}: use a local path or an s3:// path: '${entry}'.")
+            }
+            def genome = entry.startsWith('/') || entry.startsWith('s3://') \
+                ? file(entry, glob: false) : base.resolve(entry)
+            genome = genome.normalize()
+            def uri = genome.toUri()
+            if (inputUri.scheme == 's3' && uri.scheme != 's3') {
+                error("FASTA list line ${index + 1}: an S3 list must reference S3 files, not local paths: '${entry}'.")
+            }
+            if (!(genome.name ==~ /(?i).+\.(fa|fasta|fna|ffn)(\.gz)?/)) {
+                error("FASTA list line ${index + 1}: unsupported FASTA filename: '${entry}'.")
+            }
+            if (!seen.add(uri.toString())) {
+                error("FASTA list line ${index + 1}: duplicate genome path: '${entry}'.")
+            }
+            if (!genome.exists() || genome.isDirectory()) {
+                error("FASTA list line ${index + 1}: file does not exist or is not a file: '${uri}'. Check --list_base.")
+            }
+            genomes.add(genome)
+        }
+    }
+    if (genomes.size() < 3) {
+        error("The FASTA list must contain at least three genomes; found ${genomes.size()}.")
+    }
+    return genomes
+}
+
 process PANGROWTH {
-    tag "${archive.simpleName}"
+    tag "${inputName}"
     label 'highmemMedium'
     container 'ghcr.io/gi-bielefeld/pangrowth:clowm-v0.1.0'
 
     publishDir params.outdir, mode: 'copy'
 
     input:
-    path archive
+    tuple val(inputName), val(inputType), path(inputFiles, stageAs: 'source????/*')
 
     output:
     path 'pangrowth_hist.txt'
@@ -24,6 +64,31 @@ process PANGROWTH {
     path 'pangrowth.log'
 
     script:
+    def stagedFiles = inputFiles instanceof List ? inputFiles : [inputFiles]
+    def prepareInput
+    if (inputType == 'list') {
+        // Use Nextflow's staged paths, including the numbered directories that
+        // prevent collisions when multiple genomes have the same filename.
+        prepareInput = "printf '%s\\n' ${stagedFiles.collect { shellQuote(it) }.join(' ')} > fasta_files.list"
+    } else {
+        def archive = stagedFiles[0]
+        prepareInput = """
+        mkdir input_files
+        case ${shellQuote(archive.name)} in
+            *.zip)
+                python -m zipfile -e ${shellQuote(archive)} input_files
+                ;;
+            *.tar.gz|*.tgz)
+                tar -xzf ${shellQuote(archive)} -C input_files
+                ;;
+            *)
+                echo "ERROR: Archive input must be a .zip, .tar.gz, or .tgz file." >&2
+                exit 1
+                ;;
+        esac
+        find input_files -type f \\( -iname '*.fa' -o -iname '*.fa.gz' -o -iname '*.fasta' -o -iname '*.fasta.gz' -o -iname '*.fna' -o -iname '*.fna.gz' -o -iname '*.ffn' -o -iname '*.ffn.gz' \\) -print | LC_ALL=C sort > fasta_files.list
+        """
+    }
     def canonicalArg = params.canonical ? '' : '-b'
     def telomereArg = params.cdbg && params.account_telomeres ? '-T' : ''
     def cdbgArg = params.cdbg ? '--cdbg -o pangrowth' : ''
@@ -37,31 +102,17 @@ process PANGROWTH {
     """
     set -euo pipefail
 
-    mkdir input_files
-    case "${archive.name}" in
-        *.zip)
-            python -m zipfile -e "${archive}" input_files
-            ;;
-        *.tar.gz|*.tgz)
-            tar -xzf "${archive}" -C input_files
-            ;;
-        *)
-            echo "ERROR: --input must be a .zip, .tar.gz, or .tgz archive." >&2
-            exit 1
-            ;;
-    esac
-
-    find input_files -type f \\( -iname '*.fa' -o -iname '*.fa.gz' -o -iname '*.fasta' -o -iname '*.fasta.gz' -o -iname '*.fna' -o -iname '*.fna.gz' -o -iname '*.ffn' -o -iname '*.ffn.gz' \\) -print | LC_ALL=C sort > fasta_files.list
+    ${prepareInput}
 
     genome_count=\$(wc -l < fasta_files.list)
     if [ "\${genome_count}" -lt 3 ]; then
-        echo "ERROR: The archive must contain at least three FASTA files; found \${genome_count}." >&2
+        echo "ERROR: The input must contain at least three FASTA files; found \${genome_count}." >&2
         exit 1
     fi
 
     {
         echo "pangrowth CloWM workflow"
-        echo "Input archive: ${archive.name}"
+        printf 'Input: %s (%s)\\n' ${shellQuote(inputName)} ${shellQuote(inputType)}
         echo "Genome files: \${genome_count}"
         echo "k-mer size: ${params.kmer}"
         echo "Minimum within-genome count: ${params.minimum_count}"
@@ -119,14 +170,18 @@ process PANGROWTH {
 
 
 workflow {
-    // CloWM inputs must be real files rather than S3 directory prefixes.
-    // Requiring an archive also lets Nextflow stage the complete genome
-    // collection safely.
-    def inputArchive = file(params.input)
-    if (!inputArchive.exists() || inputArchive.isDirectory()) {
-        error("Invalid input: '${params.input}' is not a valid archive file for --input.")
+    if (!params.input) {
+        error('Provide --input with an archive or FASTA list file.')
+    }
+    if (!(params.input_type in ['archive', 'list'])) {
+        error("Invalid --input_type '${params.input_type}': choose archive or list.")
+    }
+    def inputFile = file(params.input, glob: false)
+    if (!inputFile.exists() || inputFile.isDirectory()) {
+        error("Invalid input: '${params.input}' is not a file.")
     }
 
-    input_archive_ch = Channel.value(inputArchive)
-    PANGROWTH(input_archive_ch)
+    def inputFiles = params.input_type == 'list' \
+        ? readFastaList(inputFile, params.list_base) : [inputFile]
+    PANGROWTH(Channel.value(tuple(inputFile.name, params.input_type, inputFiles)))
 }
