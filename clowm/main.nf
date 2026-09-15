@@ -4,8 +4,7 @@ def shellQuote(value) {
     return "'" + value.toString().replace("'", "'\"'\"'") + "'"
 }
 
-def readFastaList(inputList, baseValue) {
-    def base = baseValue ? file(baseValue, glob: false) : inputList.parent
+def readFastaList(inputList) {
     def inputUri = inputList.toUri()
     def genomes = []
     def seen = new HashSet()
@@ -15,21 +14,35 @@ def readFastaList(inputList, baseValue) {
             if (entry.contains('://') && !entry.startsWith('s3://')) {
                 error("FASTA list line ${index + 1}: use a local path or an s3:// path: '${entry}'.")
             }
-            def genome = entry.startsWith('/') || entry.startsWith('s3://') \
-                ? file(entry, glob: false) : base.resolve(entry)
-            genome = genome.normalize()
-            def uri = genome.toUri()
-            if (inputUri.scheme == 's3' && uri.scheme != 's3') {
+            if (inputUri.scheme == 's3' && entry.startsWith('/')) {
                 error("FASTA list line ${index + 1}: an S3 list must reference S3 files, not local paths: '${entry}'.")
             }
-            if (!(genome.name ==~ /(?i).+\.(fa|fasta|fna|ffn)(\.gz)?/)) {
+            if (!(entry ==~ /(?i).+\.(fa|fasta|fna|ffn)(\.gz)?/)) {
                 error("FASTA list line ${index + 1}: unsupported FASTA filename: '${entry}'.")
             }
+            def candidates
+            if (entry.startsWith('/') || entry.startsWith('s3://')) {
+                candidates = [file(entry, glob: false)]
+            } else {
+                candidates = [inputList.parent.resolve(entry)]
+                if (inputUri.scheme == 's3') {
+                    // S3Path.root is the bucket, independent of how toUri()
+                    // represents the endpoint and bucket (including s3:///...).
+                    candidates.add(inputList.root.resolve(entry))
+                }
+            }
+            candidates = candidates.collect { it.normalize() }.unique()
+            def matches = candidates.findAll { it.exists() && !it.isDirectory() }
+            if (matches.isEmpty()) {
+                error("FASTA list line ${index + 1}: file not found or not readable: '${entry}'. Checked: ${candidates.collect { it.toUri() }.join(', ')}")
+            }
+            if (matches.size() > 1) {
+                error("FASTA list line ${index + 1}: ambiguous path '${entry}' exists relative to both the list and bucket root. Use a full s3://BUCKET/key path in the list.")
+            }
+            def genome = matches[0]
+            def uri = genome.toUri()
             if (!seen.add(uri.toString())) {
                 error("FASTA list line ${index + 1}: duplicate genome path: '${entry}'.")
-            }
-            if (!genome.exists() || genome.isDirectory()) {
-                error("FASTA list line ${index + 1}: file does not exist or is not a file: '${uri}'. Check --list_base.")
             }
             genomes.add(genome)
         }
@@ -74,7 +87,7 @@ process PANGROWTH {
         def archive = stagedFiles[0]
         prepareInput = """
         mkdir input_files
-        case ${shellQuote(archive.name)} in
+        case ${shellQuote(archive.name.toLowerCase())} in
             *.zip)
                 python -m zipfile -e ${shellQuote(archive)} input_files
                 ;;
@@ -173,15 +186,22 @@ workflow {
     if (!params.input) {
         error('Provide --input with an archive or FASTA list file.')
     }
-    if (!(params.input_type in ['archive', 'list'])) {
-        error("Invalid --input_type '${params.input_type}': choose archive or list.")
-    }
     def inputFile = file(params.input, glob: false)
     if (!inputFile.exists() || inputFile.isDirectory()) {
         error("Invalid input: '${params.input}' is not a file.")
     }
 
-    def inputFiles = params.input_type == 'list' \
-        ? readFastaList(inputFile, params.list_base) : [inputFile]
-    PANGROWTH(Channel.value(tuple(inputFile.name, params.input_type, inputFiles)))
+    def inputName = inputFile.name.toLowerCase()
+    def inputType
+    if (inputName.endsWith('.txt') || inputName.endsWith('.list')) {
+        inputType = 'list'
+    } else if (inputName.endsWith('.zip') || inputName.endsWith('.tar.gz') || inputName.endsWith('.tgz')) {
+        inputType = 'archive'
+    } else {
+        error("Unsupported input '${inputFile.name}': use a .txt or .list FASTA list, or a .zip, .tar.gz, or .tgz archive.")
+    }
+
+    def inputFiles = inputType == 'list' \
+        ? readFastaList(inputFile) : [inputFile]
+    PANGROWTH(Channel.value(tuple(inputFile.name, inputType, inputFiles)))
 }

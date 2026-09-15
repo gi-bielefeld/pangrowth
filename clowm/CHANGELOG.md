@@ -6,9 +6,17 @@ and workflow versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+* Detect list (`.txt`, `.list`) and archive (`.zip`, `.tar.gz`, `.tgz`) input
+  automatically from the filename, ignoring case.
+* Resolve list entries automatically relative to the list or its S3 bucket
+  root, with an error for ambiguous matches. Removed the `input_type` and
+  `list_base` parameters; users only select their input file.
+
 ### Added
 
-* FASTA list input with an optional base path for relative entries, including
+* FASTA list input with automatic resolution of relative entries, including
   bucket-root paths in CloWM. Referenced genomes are staged by Nextflow into
   separate directories to avoid filename collisions.
 * Validation of list entries for missing files, duplicate paths, FASTA

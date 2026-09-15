@@ -1,6 +1,6 @@
 # pangrowth
 
-`pangrowth` estimates how a pangenome changes as genomes are sampled. From an
+`pangrowth` estimates how a pangenome changes as genomes are sampled. From a
 genome archive or a list of nucleotide FASTA paths, this workflow:
 
 * counts the frequency of each *k*-mer across genomes;
@@ -19,9 +19,10 @@ Upload a `.zip`, `.tar.gz`, or `.tgz` archive containing at least three FASTA
 files. Each FASTA file is treated as one genome. Files may be gzip-compressed
 and may be placed in subdirectories inside the archive.
 
-Alternatively, select a text file such as `all_list.txt` and set **Input type**
-to `list`. Use **Base path for relative FASTA list entries** to specify where
-its paths begin (for example, `s3://YOUR-BUCKET/` for bucket-root paths).
+Alternatively, select a `.txt` or `.list` file such as `all_list.txt`; the
+workflow detects list input automatically from its filename.
+Paths in the list are resolved automatically relative to the list's directory
+or its S3 bucket root. Full `s3://BUCKET/key` paths are also accepted.
 Nextflow stages the listed files automatically using the selected S3 provider
 and your bucket permissions.
 
