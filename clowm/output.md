@@ -1,5 +1,10 @@
 # Output files
 
+Each input collection has its own output folder, named after its list or
+archive file. If several collections are supplied, `all/` contains combined
+versions of the plots and fit summaries below. The `all/` folder does not
+duplicate numerical result tables.
+
 ## Numerical results
 
 * `pangrowth_hist.txt` — one line per genome frequency. Line *i* is the number
@@ -21,7 +26,11 @@
 These files are present when PDF plotting is enabled and the corresponding fit
 succeeds:
 
-* `pangrowth_hist.pdf` — distribution of *k*-mers by genome frequency.
+* `pangrowth_hist.pdf` — distribution of *k*-mers by absolute genome
+  frequency. Tick labels are thinned automatically while retaining the first
+  and final genome counts.
+* `pangrowth_hist_percentage.pdf` — the same raw *k*-mer counts grouped into
+  5%, 10%, ..., 100% genome-frequency bins.
 * `pangrowth_growth.pdf` — expected pangenome growth and new-item curves with
   power-law fits.
 * `pangrowth_core.pdf` — expected core-genome curve with an exponential-decay

@@ -8,6 +8,9 @@ and workflow versions follow [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+* Always create absolute and five-percentage-point histogram plots with raw
+  *k*-mer counts. Histogram normalization controls are no longer exposed in
+  CloWM, and absolute-axis tick labels are thinned automatically.
 * Detect list (`.txt`, `.list`) and archive (`.zip`, `.tar.gz`, `.tgz`) input
   automatically from the filename, ignoring case.
 * Resolve list entries automatically relative to the list or its S3 bucket
@@ -16,6 +19,9 @@ and workflow versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+* Multi-pangenome execution from comma- or whitespace-separated input paths,
+  an input wildcard, or parameter arrays for direct Nextflow use, with one
+  result folder per collection and combined comparison plots in `all/`.
 * Hill-number PDF with interpolation, observed, and extrapolation styling.
 * FASTA list input with automatic resolution of relative entries, including
   bucket-root paths in CloWM. Referenced genomes are staged by Nextflow into

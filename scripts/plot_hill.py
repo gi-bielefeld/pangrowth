@@ -55,11 +55,16 @@ def segment(data, fit):
     return data[data["fit"].isin((fit, "obs"))].sort_values("m")
 
 
-def plot_hill(input_files, output_file):
+def plot_hill(input_files, output_file, labels=None):
+    labels = labels or [os.path.basename(filename) for filename in input_files]
+    if len(labels) != len(input_files):
+        raise ValueError(
+            f"received {len(labels)} labels for {len(input_files)} input files"
+        )
     datasets = []
-    for filename in input_files:
+    for filename, label in zip(input_files, labels):
         data, observed = load_data(filename)
-        datasets.append((data, observed, os.path.basename(filename)))
+        datasets.append((data, observed, label))
     colors = sns.color_palette("tab10", n_colors=len(datasets))
     richness_max = max(data["richness"].max() for data, _, _ in datasets)
     y_max = richness_max * 1.05 if richness_max > 0 else 1.0
@@ -152,6 +157,10 @@ def main():
         "input_files", nargs="+", help="TSV file(s) produced by 'pangrowth hill'."
     )
     parser.add_argument("output_file", help="Output figure (PDF by default).")
+    parser.add_argument(
+        "--label", action="append", dest="labels",
+        help="Legend label for an input file; repeat once per input file.",
+    )
     args = parser.parse_args()
 
     root, extension = os.path.splitext(args.output_file)
@@ -159,7 +168,7 @@ def main():
         args.output_file = root + ".pdf"
 
     try:
-        plot_hill(args.input_files, args.output_file)
+        plot_hill(args.input_files, args.output_file, args.labels)
     except (OSError, ValueError, pd.errors.ParserError) as error:
         parser.exit(1, f"plot_hill.py: error: {error}\n")
 

@@ -13,17 +13,17 @@
       "properties": {
         "input": {
           "type": "string",
-          "format": "file-path",
+          "format": "file-path-pattern",
           "fa_icon": "fas fa-file",
-          "description": "Genome archive or FASTA list file",
-          "help_text": "Select a file; its type is detected automatically. .txt and .list files contain one FASTA path per line; .zip, .tar.gz, and .tgz files are genome archives. List paths may be relative to the list's directory, relative to its S3 bucket root, or full s3://BUCKET/key paths. No base-folder setting is needed. At least three genomes are required. Supported FASTA names end in .fa, .fasta, .fna, or .ffn, optionally followed by .gz. Nextflow stages all listed genomes before analysis."
+          "description": "Genome archive(s) or FASTA list file(s)",
+          "help_text": "Select one file, or use Raw input to enter several file paths separated by commas or whitespace. A wildcard pattern can also match several files (for example s3://BUCKET/pangenomes/*.txt). Commas are recommended; input paths cannot themselves contain commas or whitespace. Types are detected automatically: .txt and .list files contain one FASTA path per line; .zip, .tar.gz, and .tgz files are genome archives. Every selected file defines one pangenome. At least three genomes are required per pangenome."
         },
         "outdir": {
           "type": "string",
           "format": "directory-path",
           "fa_icon": "fas fa-folder-open",
           "description": "Output directory",
-          "help_text": "Directory in which all result tables, plots, fit summaries, and the workflow log are written."
+          "help_text": "Directory in which results are grouped by pangenome. Runs with multiple inputs also contain an all/ folder with combined plots."
         }
       },
       "required": [
@@ -77,33 +77,7 @@
           "type": "boolean",
           "default": true,
           "description": "Create PDF plots",
-          "help_text": "Generate PDF plots for the frequency histogram, expected pangenome growth, and expected core size. Numerical output is always generated."
-        }
-      }
-    },
-    "plotting": {
-      "title": "Plot Parameters",
-      "description": "Optional histogram display settings.",
-      "type": "object",
-      "fa_icon": "fas fa-chart-column",
-      "properties": {
-        "histogram_normalize_x": {
-          "type": "boolean",
-          "default": false,
-          "description": "Normalize histogram x-axis",
-          "help_text": "Display k-mer frequency as a fraction of the number of genomes rather than as an absolute genome count."
-        },
-        "histogram_normalize_y": {
-          "type": "string",
-          "enum": [
-            "none",
-            "multiplicity",
-            "percentage",
-            "both"
-          ],
-          "default": "none",
-          "description": "Histogram y-axis normalization",
-          "help_text": "Multiplicity weights every bin by its genome frequency; percentage scales counts to sum to one; both applies multiplicity weighting followed by percentage scaling."
+          "help_text": "Generate PDF plots for the frequency histogram (absolute and five-percentage-point x-axes), expected pangenome growth, expected core size, and Hill numbers. Numerical output is always generated."
         }
       }
     },
@@ -171,9 +145,6 @@
     },
     {
       "$ref": "#/definitions/analysis"
-    },
-    {
-      "$ref": "#/definitions/plotting"
     },
     {
       "$ref": "#/definitions/expert"

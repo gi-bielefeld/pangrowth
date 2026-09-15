@@ -41,7 +41,7 @@ def sort_by_length(input_files):
     files = sorted(files, key=lambda x: -x[1])
     return [f for f,_ in files]
 
-def plot_scatter_from_file(input_files, output_file):
+def plot_scatter_from_file(input_files, output_file, labels=None):
     colors = sns.color_palette("tab10", len(input_files))
 
     sns.set_style("whitegrid")
@@ -54,9 +54,10 @@ def plot_scatter_from_file(input_files, output_file):
         y = load_data(input_file)
         x = [i for i in range(1,len(y)+1)]
 
-        name = os.path.basename(input_file)
-        if os.path.dirname(input_file) != "":
-            name = os.path.dirname(input_file)+"/"+name
+        name = (
+            labels.get(input_file, os.path.basename(input_file))
+            if labels else os.path.basename(input_file)
+        )
 
         sns.scatterplot(x=x, y=y, s=20,
                 color=colors[idx], linewidth=1.2,
@@ -88,6 +89,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Plot pangenome growth from histogram(s).")
     parser.add_argument("input_files", nargs='+', help="Input histogram file(s).")
     parser.add_argument("output_file", help="Output figure file in pdf.")
+    parser.add_argument("--label", action="append", dest="labels",
+                        help="Legend label for an input file; repeat once per input file.")
 
     args = parser.parse_args()
 
@@ -96,4 +99,10 @@ if __name__ == "__main__":
     if ext.lower() != '.pdf':
         args.output_file = args.output_file + '.pdf'
 
-    plot_scatter_from_file(sort_by_length(args.input_files), args.output_file)
+    if args.labels is not None and len(args.labels) != len(args.input_files):
+        parser.error(
+            f"received {len(args.labels)} labels for "
+            f"{len(args.input_files)} input files"
+        )
+    labels = dict(zip(args.input_files, args.labels)) if args.labels else None
+    plot_scatter_from_file(sort_by_length(args.input_files), args.output_file, labels)

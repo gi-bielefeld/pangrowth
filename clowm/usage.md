@@ -88,10 +88,42 @@ nextflow run . --input data/yeast/cerevisiae-n81/all_list.txt \
 This command runs the analysis and requires the configured compute resources;
 it is not a lightweight input check.
 
+### Comparing pangenomes
+
+One selected list or archive defines one pangenome. To analyse and compare
+specific collections in CloWM, switch **Input** to **Raw** and separate their
+paths with commas (recommended) or whitespace:
+
+```text
+s3://initial-bucket-4853e34c/yeast/cerevisiae.txt,s3://initial-bucket-4853e34c/yeast/paradoxus.txt
+```
+
+Input paths must not themselves contain commas or whitespace. Alternatively,
+use a wildcard that matches the collection files:
+
+```text
+s3://initial-bucket-4853e34c/yeast/*/all_list.txt
+```
+
+CloWM's current parameter form has no multi-file picker for a single workflow
+parameter, so multiple explicit paths use Raw mode. You can still select one
+exact file normally. A wildcard must match only supported collection files;
+each matched file is validated independently. Direct Nextflow use additionally
+accepts an array of paths if parameters are supplied through a JSON or YAML
+file.
+
+The collection filename, without `.txt`, `.list`, `.zip`, `.tar.gz`, or
+`.tgz`, becomes its output folder and plot label. Thus `cerevisiae.txt` becomes
+`cerevisiae/`. Unsafe characters are replaced with underscores, duplicate
+names receive `_2`, `_3`, and so on, and the filename `all` becomes
+`all_input`. With at least two collections, the workflow also creates `all/`
+containing plots with every pangenome.
+
 ### Output directory
 
-All numerical tables, optional PDF plots, fit summaries, and `pangrowth.log`
-are written to the selected output directory.
+Numerical tables, optional PDF plots, fit summaries, and `pangrowth.log` are
+written below one named folder per pangenome. Combined plots are written below
+`all/` when at least two collections are supplied.
 
 ## Analysis parameters
 
@@ -128,10 +160,10 @@ scan and therefore more runtime.
 ### PDF plots
 
 Plots are enabled by default. Plotting failures do not discard numerical
-results; details are recorded in `pangrowth.log`. The histogram x-axis can be
-shown either as an absolute genome count or normalized to the interval `(0,1]`.
-The y-axis can be left unchanged, weighted by multiplicity, converted to a
-percentage, or both weighted and converted to a percentage.
+results; details are recorded in `pangrowth.log`. Two raw-count histogram plots
+are always attempted: one uses absolute genome frequencies, and the other
+groups frequencies into five-percentage-point bins. Histogram normalization is
+not exposed as a CloWM parameter.
 
 ## Expert parameters
 

@@ -87,14 +87,15 @@ python scripts/plot_hist.py hist.txt hist.pdf
     <img src="png/hist.png" width="750" alt="k-mer frequency histogram of 12 ecoli">
 </p>
 
-If you have multiple histograms that you want to compare with different number
-of genomes you can use:
+If you have multiple histograms with different numbers of genomes, compare
+them on five-percentage-point frequency bins with:
 
 ```bash
-python scripts/plot_hist.py --norm_x --norm_y=both hist.txt data/hist_ecoli_n50.txt data/hist_ecoli_n200.txt hist_multiple.pdf
+python scripts/plot_hist.py --norm_x hist.txt data/hist_ecoli_n50.txt data/hist_ecoli_n200.txt hist_multiple.pdf
 ```
 
-- The flag `--norm_x` normalize the x-axis to be between (0,1].
+- The flag `--norm_x` groups the x-axis into 5%, 10%, ..., 100% bins. It does
+  not alter the y values.
 - The flag `--norm_y` allows two types of normalization: 
     - `multiplicity` which adjusts each histogram value h[i] multiplying it by its
       index i (i.e., h[i] * i, this means that values appearing once remain the same,

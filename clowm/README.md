@@ -1,7 +1,7 @@
 # pangrowth
 
-`pangrowth` estimates how a pangenome changes as genomes are sampled. From a
-genome archive or a list of nucleotide FASTA paths, this workflow:
+`pangrowth` estimates how a pangenome changes as genomes are sampled. From one
+or more genome archives or lists of nucleotide FASTA paths, this workflow:
 
 * counts the frequency of each *k*-mer across genomes;
 * calculates the exact expected pangenome growth curve;
@@ -26,6 +26,12 @@ or its S3 bucket root. Full `s3://BUCKET/key` paths are also accepted.
 Nextflow stages the listed files automatically using the selected S3 provider
 and your bucket permissions.
 
+To compare several pangenomes, enter comma-separated file paths using the
+Input field's Raw mode, or enter a wildcard that matches several list files or
+archives. Each collection is analysed separately. Its results are placed in a
+folder named after the collection file, and combined plots are placed in
+`all/`.
+
 See [Usage](usage.md) for parameter details and [Output](output.md) for a
 description of every generated file.
 
@@ -35,6 +41,12 @@ With Nextflow and Docker installed, run the same workflow locally with:
 
 ```bash
 nextflow run . --input genomes.tar.gz --outdir results
+```
+
+Quote wildcard input so that Nextflow, rather than the shell, resolves it:
+
+```bash
+nextflow run . --input 'data/pangenomes/*.txt' --outdir results
 ```
 
 ## Contact
