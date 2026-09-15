@@ -4,6 +4,17 @@ on:
   push:
     branches:
       - clowm
+    paths:
+      - .dockerignore
+      - Dockerfile
+      - requirements.txt
+      - CMakeLists.txt
+      - src/**
+      - rmath/**
+      - scripts/plot_core.py
+      - scripts/plot_growth.py
+      - scripts/plot_hill.py
+      - scripts/plot_hist.py
     tags:
       - clowm-v*
 

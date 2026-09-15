@@ -10,7 +10,8 @@ and workflow versions follow [Semantic Versioning](https://semver.org/).
 
 * Build the development container from the actual `clowm` branch and use its
   `clowm` image tag, keeping workflow code and bundled plotting scripts in
-  sync.
+  sync. Rebuild it only when container dependencies, compiled sources, or
+  bundled scripts change.
 * Defer per-pangenome output-folder naming until the process input name is
   available, avoiding an early `No such variable: datasetId` error.
 
