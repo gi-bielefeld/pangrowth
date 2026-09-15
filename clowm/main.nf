@@ -64,7 +64,7 @@ def readFastaList(inputList) {
 process PANGROWTH {
     tag "${datasetId}"
     label 'highmemMedium'
-    container 'ghcr.io/gi-bielefeld/pangrowth:clowm-v0.1.0'
+    container 'ghcr.io/gi-bielefeld/pangrowth:clowm'
 
     publishDir params.outdir, mode: 'copy', \
         saveAs: { filename -> "${datasetId}/${filename}" }
@@ -202,7 +202,7 @@ process PANGROWTH {
 
 process COMPARE_PLOTS {
     tag 'all pangenomes'
-    container 'ghcr.io/gi-bielefeld/pangrowth:clowm-v0.1.0'
+    container 'ghcr.io/gi-bielefeld/pangrowth:clowm'
 
     publishDir "${params.outdir}/all", mode: 'copy'
 

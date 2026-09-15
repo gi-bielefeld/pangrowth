@@ -3,7 +3,7 @@ name: Build and publish CloWM container
 on:
   push:
     branches:
-      - clown-v0.1.0
+      - clowm
     tags:
       - clowm-v*
 
@@ -37,7 +37,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=clowm-v0.1.0,enable=${{ github.ref == 'refs/heads/clown-v0.1.0' }}
+            type=raw,value=clowm,enable=${{ github.ref == 'refs/heads/clowm' }}
             type=ref,event=tag
 
       - name: Build and push image
