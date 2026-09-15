@@ -6,6 +6,11 @@ and workflow versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+* Defer per-pangenome output-folder naming until the process input name is
+  available, avoiding an early `No such variable: datasetId` error.
+
 ### Changed
 
 * Always create absolute and five-percentage-point histogram plots with raw

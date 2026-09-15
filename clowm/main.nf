@@ -66,7 +66,8 @@ process PANGROWTH {
     label 'highmemMedium'
     container 'ghcr.io/gi-bielefeld/pangrowth:clowm-v0.1.0'
 
-    publishDir "${params.outdir}/${datasetId}", mode: 'copy'
+    publishDir params.outdir, mode: 'copy', \
+        saveAs: { filename -> "${datasetId}/${filename}" }
 
     input:
     tuple val(datasetId), val(inputName), val(inputType), path(inputFiles, stageAs: 'source????/*')
