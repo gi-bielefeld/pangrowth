@@ -82,10 +82,11 @@ def plot_histograms(input_files, output_file, norm_x=False, norm_y="none", label
         raise ValueError(
             f"received {len(labels)} labels for {len(input_files)} input files"
         )
+    datasets = sorted(zip(input_files, labels), key=lambda item: item[1].casefold())
 
     dataframes = [
         make_dataframe(filename, label, norm_x, norm_y)
-        for filename, label in zip(input_files, labels)
+        for filename, label in datasets
     ]
     data = pd.concat(dataframes, ignore_index=True)
     if norm_x:

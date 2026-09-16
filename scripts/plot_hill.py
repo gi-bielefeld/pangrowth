@@ -62,7 +62,10 @@ def plot_hill(input_files, output_file, labels=None):
             f"received {len(labels)} labels for {len(input_files)} input files"
         )
     datasets = []
-    for filename, label in zip(input_files, labels):
+    labeled_files = sorted(
+        zip(input_files, labels), key=lambda item: item[1].casefold()
+    )
+    for filename, label in labeled_files:
         data, observed = load_data(filename)
         datasets.append((data, observed, label))
     colors = sns.color_palette("tab10", n_colors=len(datasets))

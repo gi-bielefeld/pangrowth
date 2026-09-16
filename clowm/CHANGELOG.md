@@ -8,6 +8,8 @@ and workflow versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+* Keep pangenome ordering, labels, and colors consistent across histogram,
+  growth, core, and Hill-number comparison plots.
 * Build the development container from the actual `clowm` branch and use its
   `clowm` image tag, keeping workflow code and bundled plotting scripts in
   sync. Rebuild it only when container dependencies, compiled sources, or

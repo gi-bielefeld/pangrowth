@@ -33,15 +33,14 @@ def get_max_x(input_files):
 def exp_dec(x, a, b, c):
     return a * np.exp(-b * x) + c
 
-def sort_by_length(input_files):
-    files = []
-    for input_file in input_files:
-        y = load_data(input_file)
-        files.append((input_file, len(y)))
-    files = sorted(files, key=lambda x: -x[1])
-    return [f for f,_ in files]
-
 def plot_scatter_from_file(input_files, output_file, labels=None):
+    input_files = sorted(
+        input_files,
+        key=lambda filename: (
+            labels.get(filename, os.path.basename(filename))
+            if labels else os.path.basename(filename)
+        ).casefold(),
+    )
     colors = sns.color_palette("tab10", len(input_files))
 
     sns.set_style("whitegrid")
@@ -105,4 +104,4 @@ if __name__ == "__main__":
             f"{len(args.input_files)} input files"
         )
     labels = dict(zip(args.input_files, args.labels)) if args.labels else None
-    plot_scatter_from_file(sort_by_length(args.input_files), args.output_file, labels)
+    plot_scatter_from_file(args.input_files, args.output_file, labels)
