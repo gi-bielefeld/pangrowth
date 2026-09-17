@@ -130,7 +130,7 @@ void output_kmer_core(int argc, char *argv[]){
 		fprintf(stderr, "  -t INT     number of worker threads [%d]\n", opt.n_thread);
 		fprintf(stderr, "  -i PATH    file containing a list of fasta files on each line\n");
 		fprintf(stderr, "  -b         turn off transformation into canonical [%d]\n", opt.canonical);
-		fprintf(stderr, "  -s INT     suffix size for k-mer [%d]\n", opt.n_thread);
+		fprintf(stderr, "  -s INT     suffix size in bits for k-mer [%d]\n", opt.suf);
 		fprintf(stderr, "  -q FLOAT   quorum percentage between [0,1] for a k-mer to be core [%0.2f]\n", quorum);
 		//fprintf(stderr, "  -K INT     chunk size [100m]\n");
 		return;

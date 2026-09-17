@@ -19,6 +19,13 @@ and workflow versions follow [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+* Use *k*=31 and a quorum threshold of 0.9 by default. The strict-core and
+  quorum-core curves are now calculated and plotted separately. At a quorum of
+  1.0, reuse the strict-core calculation instead of running it twice.
+* Align the CloWM hashtable suffix default with Pangrowth at 10 bits (1,024
+  partitions) and document that all CPUs allocated to the task are used.
+* Always generate plots, and remove the plot toggle, CDBG mode, and all
+  CDBG-specific parameters from the CloWM interface.
 * Always create absolute and five-percentage-point histogram plots with raw
   *k*-mer counts. Histogram normalization controls are no longer exposed in
   CloWM, and absolute-axis tick labels are thinned automatically.

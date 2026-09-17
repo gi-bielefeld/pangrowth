@@ -121,7 +121,7 @@ containing plots with every pangenome.
 
 ### Output directory
 
-Numerical tables, optional PDF plots, fit summaries, and `pangrowth.log` are
+Numerical tables, PDF plots, fit summaries, and `pangrowth.log` are
 written below one named folder per pangenome. Combined plots are written below
 `all/` when at least two collections are supplied.
 
@@ -129,7 +129,7 @@ written below one named folder per pangenome. Combined plots are written below
 
 ### *k*-mer length
 
-The default length is 17. Short or heterogeneous sequences may benefit from a
+The default length is 31. Short or heterogeneous sequences may benefit from a
 smaller value. Values from 5 through 31 are accepted by this workflow.
 
 ### Minimum within-genome count
@@ -140,9 +140,11 @@ sequencing errors when read data are used.
 
 ### Core-genome quorum
 
-The quorum is the minimum fraction of genomes in which an item must occur to be
-part of the core. The default `1.0` computes a strict core. For example, `0.9`
-computes a soft core whose items occur in at least 90% of the sampled genomes.
+The workflow always computes the strict-core curve. It also computes a separate
+quorum-core curve for items occurring in a minimum fraction of genomes. The
+default quorum is `0.9`, meaning at least 90% of the sampled genomes.
+If the quorum is set to `1.0`, the workflow reuses the strict-core result
+instead of running the same calculation twice.
 
 ### Canonical *k*-mers
 
@@ -150,43 +152,30 @@ Canonical counting identifies each *k*-mer with its reverse complement and is
 enabled by default. Disable it only when strand orientation is meaningful for
 the analysis.
 
-### Compacted de Bruijn graph diversity
-
-When enabled, pangrowth calculates both the *k*-mer histogram and an
-infix-equivalent histogram. It combines them to estimate Hill-number diversity
-for the colored compacted de Bruijn graph. This requires an additional input
-scan and therefore more runtime.
-
 ### PDF plots
 
-Plots are enabled by default. Plotting failures do not discard numerical
+Plots are generated automatically. Plotting failures do not discard numerical
 results; details are recorded in `pangrowth.log`. Two raw-count histogram plots
-are always attempted: one uses absolute genome frequencies, and the other
-groups frequencies into five-percentage-point bins. Histogram normalization is
-not exposed as a CloWM parameter.
+are attempted: one uses absolute genome frequencies, and the other groups
+frequencies into five-percentage-point bins.
 
 ## Expert parameters
 
 ### Hashtable suffix size
 
-The suffix size partitions the counting hashtable. The default is 4. Larger
-values create more partitions and can impose substantial memory overhead, so
-the workflow limits this setting to 12.
+The suffix size is measured in bits, not nucleotide characters. It partitions
+the counting hashtable into `2^s` parts. The default is 10, creating 1,024
+partitions. Larger values create more partitions and can impose substantial
+memory overhead, so the workflow limits this setting to 12.
 
-### Telomeres
+### Worker threads
 
-When compacted de Bruijn graph diversity is enabled, sequence ends can be
-treated as telomeres that break unitigs.
+Pangrowth receives the full CPU allocation of its Nextflow task through
+`-t ${task.cpus}`. The bundled `highmemMedium` profile requests eight CPUs;
+CloWM or another server configuration can override that allocation, and
+Pangrowth will automatically use the resulting number.
 
 ### Hill-number sampling
 
 By default, 30 interpolation and extrapolation sample points are emitted. Use 0
 to emit every point.
-
-### CDBG interpolation
-
-The default Bernoulli-hybrid interpolation calculates five right-tail bins
-exactly. The limit can be changed, and an adaptive relative tolerance can stop
-the corrections once three consecutive corrections change richness,
-exponential entropy, and inverse Simpson diversity by no more than that
-tolerance. Exact interpolation is available but may be considerably slower.

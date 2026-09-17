@@ -41,7 +41,7 @@
           "type": "integer",
           "minimum": 5,
           "maximum": 31,
-          "default": 17,
+          "default": 31,
           "description": "k-mer length",
           "help_text": "Length of nucleotide k-mers used to represent the genomes. Smaller values may be appropriate for short or heterogeneous sequences."
         },
@@ -57,33 +57,21 @@
           "type": "number",
           "minimum": 0.01,
           "maximum": 1.0,
-          "default": 1.0,
-          "description": "Core-genome quorum",
-          "help_text": "Minimum fraction of genomes in which an item must occur to count toward the core. A value of 1.0 computes the strict core; 0.9 computes a 90% soft core."
+          "default": 0.9,
+          "description": "Quorum-curve threshold",
+          "help_text": "Minimum fraction of genomes in which an item must occur to count toward the quorum core. The workflow also computes the strict core separately."
         },
         "canonical": {
           "type": "boolean",
           "default": true,
           "description": "Use canonical k-mers",
           "help_text": "Treat each k-mer and its reverse complement as the same item. This is recommended for ordinary nucleotide genome data."
-        },
-        "cdbg": {
-          "type": "boolean",
-          "default": false,
-          "description": "Compute compacted de Bruijn graph diversity",
-          "help_text": "Also calculate the infix-equivalent histogram and use it with the k-mer histogram to estimate Hill numbers for the colored compacted de Bruijn graph. This requires an additional scan of the input."
-        },
-        "create_plots": {
-          "type": "boolean",
-          "default": true,
-          "description": "Create PDF plots",
-          "help_text": "Generate PDF plots for the frequency histogram (absolute and five-percentage-point x-axes), expected pangenome growth, expected core size, and Hill numbers. Numerical output is always generated."
         }
       }
     },
     "expert": {
       "title": "Expert Parameters",
-      "description": "Low-level counting and Hill-number interpolation settings.",
+      "description": "Low-level counting and Hill-number sampling settings.",
       "type": "object",
       "fa_icon": "fas fa-graduation-cap",
       "properties": {
@@ -91,17 +79,10 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 12,
-          "default": 4,
+          "default": 10,
           "hidden": true,
           "description": "Hashtable suffix size",
-          "help_text": "Number of suffix bits used to partition the k-mer hashtable. Larger values create more partitions and have a substantial memory overhead."
-        },
-        "account_telomeres": {
-          "type": "boolean",
-          "default": false,
-          "hidden": true,
-          "description": "Account for telomeres when compacting",
-          "help_text": "Treat sequence ends as unitig-breaking telomeres. This option has an effect only when compacted de Bruijn graph diversity is enabled."
+          "help_text": "Number of suffix bits used to partition the k-mer hashtable. A value of 10 creates 2^10 = 1,024 partitions; it does not mean 10 nucleotide characters. Larger values create more partitions and have a substantial memory overhead."
         },
         "hill_points": {
           "type": "integer",
@@ -111,30 +92,6 @@
           "hidden": true,
           "description": "Number of Hill-number sample points",
           "help_text": "Number of interpolation and extrapolation sample points. Use 0 to report every point."
-        },
-        "hill_exact_tail": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 1000,
-          "default": 5,
-          "hidden": true,
-          "description": "Maximum exact right-tail bins",
-          "help_text": "Maximum number of right-tail bins corrected exactly by the Bernoulli-hybrid CDBG interpolation. This option applies only when CDBG diversity is enabled and exact interpolation is disabled."
-        },
-        "hill_adaptive_tolerance": {
-          "type": "number",
-          "exclusiveMinimum": 0,
-          "exclusiveMaximum": 1,
-          "hidden": true,
-          "description": "Adaptive CDBG tail tolerance",
-          "help_text": "Stop exact-tail correction after three consecutive corrections each change all Hill numbers by at most this relative tolerance. Leave unset to disable adaptive stopping."
-        },
-        "hill_force_exact": {
-          "type": "boolean",
-          "default": false,
-          "hidden": true,
-          "description": "Use exact CDBG interpolation",
-          "help_text": "Use the original exact interpolation rather than the faster Bernoulli-hybrid approximation. This option applies only when CDBG diversity is enabled."
         }
       }
     }

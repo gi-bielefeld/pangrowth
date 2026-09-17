@@ -5,13 +5,12 @@ or more genome archives or lists of nucleotide FASTA paths, this workflow:
 
 * counts the frequency of each *k*-mer across genomes;
 * calculates the exact expected pangenome growth curve;
-* calculates the expected strict or quorum-based core-genome curve; and
+* calculates separate expected strict-core and quorum-core curves; and
 * reports Hill-number diversity (richness, exponential entropy, and inverse
   Simpson diversity).
 
-It can optionally estimate diversity on the colored compacted de Bruijn graph
-by combining *k*-mer and infix-equivalent frequency histograms. PDF plots and
-plain-text numerical results are produced for downstream use.
+PDF plots and plain-text numerical results are produced automatically for
+downstream use.
 
 ## Input at a glance
 

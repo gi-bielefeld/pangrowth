@@ -74,15 +74,17 @@ process PANGROWTH {
 
     output:
     tuple val(datasetId), path('pangrowth_hist.txt'), path('pangrowth_growth.txt'), \
-        path('pangrowth_core.txt'), path('pangrowth_hill.tsv'), emit: comparison
-    path 'pangrowth_hist_infix.txt', optional: true
+        path('pangrowth_core.txt'), path('pangrowth_quorum.txt'), \
+        path('pangrowth_hill.tsv'), emit: comparison
     path 'pangrowth_hill.pdf', optional: true
     path 'pangrowth_hist.pdf', optional: true
     path 'pangrowth_hist_percentage.pdf', optional: true
     path 'pangrowth_growth.pdf', optional: true
     path 'pangrowth_core.pdf', optional: true
+    path 'pangrowth_quorum.pdf', optional: true
     path 'pangrowth_growth_fit.txt', optional: true
     path 'pangrowth_core_fit.txt', optional: true
+    path 'pangrowth_quorum_fit.txt', optional: true
     path 'pangrowth.log'
 
     script:
@@ -112,15 +114,15 @@ process PANGROWTH {
         """
     }
     def canonicalArg = params.canonical ? '' : '-b'
-    def telomereArg = params.cdbg && params.account_telomeres ? '-T' : ''
-    def cdbgArg = params.cdbg ? '--cdbg -o pangrowth' : ''
-    def histRedirect = params.cdbg ? '' : '> pangrowth_hist.txt'
-    def hillInputs = params.cdbg ? 'pangrowth_hist.txt pangrowth_hist_infix.txt' : 'pangrowth_hist.txt'
-    def hillTailArg = params.cdbg && !params.hill_force_exact ? "-B ${params.hill_exact_tail}" : ''
-    def hillToleranceArg = params.cdbg && !params.hill_force_exact && params.hill_adaptive_tolerance != null \
-        ? "-A ${params.hill_adaptive_tolerance}" : ''
-    def hillExactArg = params.cdbg && params.hill_force_exact ? '-E' : ''
     def plotLabelArg = "--label ${shellQuote(datasetId)}"
+    def quorumCalculation = (params.quorum as double) == 1.0d ? """
+    echo "Quorum is 1.0; reusing the strict-core curve" >> pangrowth.log
+    cp pangrowth_core.txt pangrowth_quorum.txt
+    """ : """
+    echo "Running quorum-core calculation" >> pangrowth.log
+    pangrowth core -q ${params.quorum} -h pangrowth_hist.txt 2>> pangrowth.log \\
+        | awk '{ print \$NF }' > pangrowth_quorum.txt
+    """
     """
     set -euo pipefail
 
@@ -139,8 +141,9 @@ process PANGROWTH {
         echo "k-mer size: ${params.kmer}"
         echo "Minimum within-genome count: ${params.minimum_count}"
         echo "Canonical k-mers: ${params.canonical}"
-        echo "CDBG diversity: ${params.cdbg}"
-        echo "Core quorum: ${params.quorum}"
+        echo "Worker threads: ${task.cpus}"
+        echo "Hashtable suffix bits: ${params.suffix_size}"
+        echo "Quorum-curve threshold: ${params.quorum}"
         echo
         echo "Input files:"
         sed 's/^/  /' fasta_files.list
@@ -148,54 +151,58 @@ process PANGROWTH {
     } > pangrowth.log
 
     echo "Running histogram calculation" >> pangrowth.log
-    pangrowth hist ${cdbgArg} \
+    pangrowth hist \
         -k ${params.kmer} \
         -t ${task.cpus} \
         -s ${params.suffix_size} \
         -c ${params.minimum_count} \
-        ${canonicalArg} ${telomereArg} \
-        -i fasta_files.list ${histRedirect} 2>> pangrowth.log
+        ${canonicalArg} \
+        -i fasta_files.list > pangrowth_hist.txt 2>> pangrowth.log
 
     echo "Running pangenome growth calculation" >> pangrowth.log
     pangrowth growth -h pangrowth_hist.txt 2>> pangrowth.log \
         | awk '{ print \$NF }' > pangrowth_growth.txt
 
-    echo "Running pangenome core calculation" >> pangrowth.log
-    pangrowth core -q ${params.quorum} -h pangrowth_hist.txt 2>> pangrowth.log \
+    echo "Running strict core calculation" >> pangrowth.log
+    pangrowth core -h pangrowth_hist.txt 2>> pangrowth.log \
         | awk '{ print \$NF }' > pangrowth_core.txt
+
+    ${quorumCalculation}
 
     echo "Running Hill-number calculation" >> pangrowth.log
     pangrowth hill \
         -p ${params.hill_points} \
-        ${hillTailArg} ${hillToleranceArg} ${hillExactArg} \
-        ${hillInputs} > pangrowth_hill.tsv 2>> pangrowth.log
+        pangrowth_hist.txt > pangrowth_hill.tsv 2>> pangrowth.log
 
-    if ${params.create_plots}; then
-        echo "Creating plots" >> pangrowth.log
-        if ! plot_hill.py ${plotLabelArg} pangrowth_hill.tsv pangrowth_hill.pdf >> pangrowth.log 2>&1; then
-            echo "WARNING: Hill-number plot generation failed." >> pangrowth.log
-            rm -f pangrowth_hill.pdf
-        fi
-        if ! plot_hist.py ${plotLabelArg} \
-            pangrowth_hist.txt pangrowth_hist.pdf >> pangrowth.log 2>&1; then
-            echo "WARNING: Histogram plot generation failed." >> pangrowth.log
-            rm -f pangrowth_hist.pdf
-        fi
-        if ! plot_hist.py --norm_x ${plotLabelArg} \
-            pangrowth_hist.txt pangrowth_hist_percentage.pdf >> pangrowth.log 2>&1; then
-            echo "WARNING: Percentage histogram plot generation failed." >> pangrowth.log
-            rm -f pangrowth_hist_percentage.pdf
-        fi
-        if ! plot_growth.py ${plotLabelArg} pangrowth_growth.txt pangrowth_growth.pdf \
-            > pangrowth_growth_fit.txt 2>> pangrowth.log; then
-            echo "WARNING: Growth plot generation failed." >> pangrowth.log
-            rm -f pangrowth_growth.pdf pangrowth_growth_fit.txt
-        fi
-        if ! plot_core.py ${plotLabelArg} pangrowth_core.txt pangrowth_core.pdf \
-            > pangrowth_core_fit.txt 2>> pangrowth.log; then
-            echo "WARNING: Core plot generation failed." >> pangrowth.log
-            rm -f pangrowth_core.pdf pangrowth_core_fit.txt
-        fi
+    echo "Creating plots" >> pangrowth.log
+    if ! plot_hill.py ${plotLabelArg} pangrowth_hill.tsv pangrowth_hill.pdf >> pangrowth.log 2>&1; then
+        echo "WARNING: Hill-number plot generation failed." >> pangrowth.log
+        rm -f pangrowth_hill.pdf
+    fi
+    if ! plot_hist.py ${plotLabelArg} \
+        pangrowth_hist.txt pangrowth_hist.pdf >> pangrowth.log 2>&1; then
+        echo "WARNING: Histogram plot generation failed." >> pangrowth.log
+        rm -f pangrowth_hist.pdf
+    fi
+    if ! plot_hist.py --norm_x ${plotLabelArg} \
+        pangrowth_hist.txt pangrowth_hist_percentage.pdf >> pangrowth.log 2>&1; then
+        echo "WARNING: Percentage histogram plot generation failed." >> pangrowth.log
+        rm -f pangrowth_hist_percentage.pdf
+    fi
+    if ! plot_growth.py ${plotLabelArg} pangrowth_growth.txt pangrowth_growth.pdf \
+        > pangrowth_growth_fit.txt 2>> pangrowth.log; then
+        echo "WARNING: Growth plot generation failed." >> pangrowth.log
+        rm -f pangrowth_growth.pdf pangrowth_growth_fit.txt
+    fi
+    if ! plot_core.py ${plotLabelArg} pangrowth_core.txt pangrowth_core.pdf \
+        > pangrowth_core_fit.txt 2>> pangrowth.log; then
+        echo "WARNING: Core plot generation failed." >> pangrowth.log
+        rm -f pangrowth_core.pdf pangrowth_core_fit.txt
+    fi
+    if ! plot_core.py ${plotLabelArg} pangrowth_quorum.txt pangrowth_quorum.pdf \
+        > pangrowth_quorum_fit.txt 2>> pangrowth.log; then
+        echo "WARNING: Quorum plot generation failed." >> pangrowth.log
+        rm -f pangrowth_quorum.pdf pangrowth_quorum_fit.txt
     fi
     """
 }
@@ -210,6 +217,7 @@ process COMPARE_PLOTS {
     tuple val(datasetIds), path(histFiles, stageAs: 'hist????/*'), \
         path(growthFiles, stageAs: 'growth????/*'), \
         path(coreFiles, stageAs: 'core????/*'), \
+        path(quorumFiles, stageAs: 'quorum????/*'), \
         path(hillFiles, stageAs: 'hill????/*')
 
     output:
@@ -217,9 +225,11 @@ process COMPARE_PLOTS {
     path 'pangrowth_hist_percentage.pdf', optional: true
     path 'pangrowth_growth.pdf', optional: true
     path 'pangrowth_core.pdf', optional: true
+    path 'pangrowth_quorum.pdf', optional: true
     path 'pangrowth_hill.pdf', optional: true
     path 'pangrowth_growth_fit.txt', optional: true
     path 'pangrowth_core_fit.txt', optional: true
+    path 'pangrowth_quorum_fit.txt', optional: true
     path 'pangrowth.log'
 
     script:
@@ -227,6 +237,7 @@ process COMPARE_PLOTS {
     def histArgs = histFiles.collect { shellQuote(it) }.join(' ')
     def growthArgs = growthFiles.collect { shellQuote(it) }.join(' ')
     def coreArgs = coreFiles.collect { shellQuote(it) }.join(' ')
+    def quorumArgs = quorumFiles.collect { shellQuote(it) }.join(' ')
     def hillArgs = hillFiles.collect { shellQuote(it) }.join(' ')
     """
     set -euo pipefail
@@ -250,6 +261,11 @@ process COMPARE_PLOTS {
         > pangrowth_core_fit.txt 2>> pangrowth.log; then
         echo "WARNING: Combined core plot generation failed." >> pangrowth.log
         rm -f pangrowth_core.pdf pangrowth_core_fit.txt
+    fi
+    if ! plot_core.py ${labelArgs} ${quorumArgs} pangrowth_quorum.pdf \
+        > pangrowth_quorum_fit.txt 2>> pangrowth.log; then
+        echo "WARNING: Combined quorum plot generation failed." >> pangrowth.log
+        rm -f pangrowth_quorum.pdf pangrowth_quorum_fit.txt
     fi
     if ! plot_hill.py ${labelArgs} ${hillArgs} pangrowth_hill.pdf >> pangrowth.log 2>&1; then
         echo "WARNING: Combined Hill-number plot generation failed." >> pangrowth.log
@@ -303,7 +319,7 @@ workflow {
 
     PANGROWTH(Channel.fromList(datasets))
 
-    if (params.create_plots && datasets.size() > 1) {
+    if (datasets.size() > 1) {
         def comparisonInputs = PANGROWTH.out.comparison
             .collect(flat: false)
             .map { resultRows ->
@@ -313,7 +329,8 @@ workflow {
                     rows.collect { it[1] },
                     rows.collect { it[2] },
                     rows.collect { it[3] },
-                    rows.collect { it[4] }
+                    rows.collect { it[4] },
+                    rows.collect { it[5] }
                 )
             }
         COMPARE_PLOTS(comparisonInputs)

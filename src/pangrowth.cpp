@@ -34,7 +34,7 @@ static void print_hist_usage() {
     fprintf(stderr, "FASTA options:\n");
     fprintf(stderr, "  -i PATH    file containing one FASTA path per line\n");
     fprintf(stderr, "  -b         turn off canonical k-mers\n");
-    fprintf(stderr, "  -s INT     suffix size for k-mer [4]\n");
+    fprintf(stderr, "  -s INT     suffix size in bits for k-mer [10]\n");
     fprintf(stderr, "  -c INT     minimum k-mer count within a file [1]\n");
     fprintf(stderr, "  -T         account for telomeres in cdbg mode\n");
     fprintf(stderr, "cdbg output: <prefix>_hist.txt and <prefix>_hist_infix.txt\n");
