@@ -2,12 +2,24 @@
 
 ## Input / Output
 
-### Example dataset
+### Example datasets
 
-CloWM's **Try it out** button selects
-`s3://workflow-exampledata/pangrowth/ecoli.tar.gz`, an archive containing 12
-*Escherichia coli* genomes. You must still select an output directory before
-starting the workflow.
+The public examples contain 12 *Escherichia coli* genomes and 20 complete
+*Klebsiella pneumoniae* RefSeq assemblies. Each collection is available in all
+three supported input forms:
+
+| Dataset | Archive | Folder | FASTA list |
+| --- | --- | --- | --- |
+| *E. coli* | `s3://workflow-exampledata/pangrowth/ecoli.tar.gz` | `s3://workflow-exampledata/pangrowth/ecoli` | `s3://workflow-exampledata/pangrowth/list_ecoli.txt` |
+| *K. pneumoniae* | `s3://workflow-exampledata/pangrowth/klebsiella.tar.gz` | `s3://workflow-exampledata/pangrowth/klebsiella` | `s3://workflow-exampledata/pangrowth/list_klebsiella.txt` |
+
+The *K. pneumoniae* assemblies were downloaded from
+[NCBI Datasets](https://www.ncbi.nlm.nih.gov/datasets/) on 2026-09-18,
+restricting the query to exact species matches and complete, non-atypical
+RefSeq assemblies. Within each row, the three paths are alternative
+representations of the same dataset and should not be analysed together as a
+comparison. CloWM's **Try it out** button selects the *E. coli* archive. You
+must still select an output directory before starting the workflow.
 
 ### Input folder
 
@@ -22,10 +34,11 @@ For example, the repository's local example genomes can be selected with:
 nextflow run . --input data/fa --outdir results/ecoli
 ```
 
-On CloWM, use the corresponding S3 folder URI, without a wildcard, for example
-`s3://BUCKET/ecoli`. The folder itself defines one pangenome and its basename
-(`ecoli` here) becomes the result-folder name and plot label. At least three
-supported FASTA files must be present directly in the folder.
+On CloWM, select the corresponding S3 folder URI without a wildcard, such as
+`s3://workflow-exampledata/pangrowth/ecoli` or
+`s3://workflow-exampledata/pangrowth/klebsiella`. The folder itself defines
+one pangenome and its basename becomes the result-folder name and plot label.
+At least three supported FASTA files must be present directly in the folder.
 
 ### Input archive
 
@@ -39,9 +52,13 @@ may be arranged in subdirectories. Non-FASTA files are ignored. A FASTA file is
 the sampling unit: do not split one genome over several files, because those
 files would be interpreted as separate genomes.
 
+The example archives contain their 12 or 20 gzip-compressed FASTA files
+directly at the archive root.
+
 ### FASTA list input
 
-Select a `.txt` or `.list` file such as `all_list.txt` as **Input** (`input`).
+Select a `.txt` or `.list` file such as
+`s3://workflow-exampledata/pangrowth/list_ecoli.txt` as **Input** (`input`).
 The workflow detects the input type from the filename, ignoring case; no
 separate input-type parameter is needed. Unsupported extensions are rejected
 before a process is submitted. Each nonempty line contains one FASTA
@@ -60,33 +77,12 @@ permissions and the same S3 provider as the list and output directory.
 Local absolute paths are supported only for local list files; laptop paths
 are not accessible from CloWM.
 
-For the `yeast/cerevisiae-n81/` layout, keep the existing list entries:
-
-```text
-yeast/cerevisiae-n81/GCA_039880145.1/GCA_039880145.1_ASM3988014v1_genomic.fna
-yeast/cerevisiae-n81/GCA_025727145.1/GCA_025727145.1_ASM2572714v1_genomic.fna
-yeast/cerevisiae-n81/GCA_025727285.1/GCA_025727285.1_ASM2572728v1_genomic.fna
-```
-
-For your bucket, select:
-
-| Parameter | Value |
-| --- | --- |
-| `input` | `s3://initial-bucket-4853e34c/yeast/cerevisiae-n81/all_list.txt` |
-| `outdir` | `s3://initial-bucket-4853e34c/results/cerevisiae-n81/` |
-
-The list above works unchanged: its entries are found relative to the bucket
-root. For a portable list that also works locally, you can instead write
-paths relative to `all_list.txt`, such as:
-
-```text
-GCA_039880145.1/GCA_039880145.1_ASM3988014v1_genomic.fna
-GCA_025727145.1/GCA_025727145.1_ASM2572714v1_genomic.fna
-GCA_025727285.1/GCA_025727285.1_ASM2572728v1_genomic.fna
-```
-
-Use just a filename only when the FASTA is in the same directory as the list;
-genomes in subdirectories need the subdirectory in their relative path.
+The public lists contain bucket-root-relative entries beginning with
+`pangrowth/ecoli/` or `pangrowth/klebsiella/`. They resolve to the same
+gzip-compressed FASTA files available in the corresponding public folder. In
+your own list, use just a filename when the FASTA is beside the list. Include
+the relative subdirectory when it is elsewhere, or provide the full
+`s3://BUCKET/key` URI.
 
 Use the actual bucket name shown in the S3 path copied from CloWM's file
 browser, which may differ from its display name. Do not use the HTTPS storage
@@ -102,16 +98,10 @@ Numbered directories keep identical filenames from different source folders
 separate. Genome data do not need to be downloaded to your laptop for a CloWM
 run.
 
-For a local run from the repository root, use the portable list with paths
-relative to `all_list.txt`:
-
-```bash
-nextflow run . --input data/yeast/cerevisiae-n81/all_list.txt \
-    --outdir results/cerevisiae-n81
-```
-
-This command runs the analysis and requires the configured compute resources;
-it is not a lightweight input check.
+Selecting `list_ecoli.txt` in CloWM is equivalent to running locally with a
+list whose entries point to the files under `data/fa`. A workflow run performs
+the full analysis and requires the configured compute resources; it is not a
+lightweight input check.
 
 ### Comparing pangenomes
 
@@ -120,14 +110,21 @@ compare specific collections in CloWM, switch **Input** to **Raw** and separate
 their paths with commas (recommended) or whitespace:
 
 ```text
-s3://initial-bucket-4853e34c/yeast/cerevisiae.txt,s3://initial-bucket-4853e34c/yeast/paradoxus.txt
+s3://workflow-exampledata/pangrowth/ecoli,s3://workflow-exampledata/pangrowth/klebsiella
 ```
 
-Input paths must not themselves contain commas or whitespace. Alternatively,
-use a wildcard that matches the collection files:
+This runs the two example species separately and creates combined comparison
+plots in `all/`. The two list files can be compared equivalently:
 
 ```text
-s3://initial-bucket-4853e34c/yeast/*/all_list.txt
+s3://workflow-exampledata/pangrowth/list_ecoli.txt,s3://workflow-exampledata/pangrowth/list_klebsiella.txt
+```
+
+Input paths must not themselves contain commas or whitespace. 
+Alternatively, use a wildcard that matches the collection files:
+
+```text
+s3://workflow-exampledata/pangrowth/*.txt
 ```
 
 CloWM's current parameter form has no multi-input picker for a single workflow
@@ -138,8 +135,8 @@ additionally accepts an array of paths if parameters are supplied through a
 JSON or YAML file.
 
 The folder name or collection filename, without `.txt`, `.list`, `.zip`,
-`.tar.gz`, or `.tgz`, becomes its output folder and plot label. Thus
-`cerevisiae.txt` and a folder named `cerevisiae` both become `cerevisiae/`.
+`.tar.gz`, or `.tgz`, becomes its output folder and plot label. Thus a folder
+named `ecoli` becomes `ecoli/`, while `list_ecoli.txt` becomes `list_ecoli/`.
 Unsafe characters are replaced with underscores, duplicate names receive `_2`,
 `_3`, and so on, and the name `all` becomes `all_input`. With at least two
 collections, the workflow also creates `all/` containing plots with every

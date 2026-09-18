@@ -26,7 +26,7 @@ Alternatively, upload a `.zip`, `.tar.gz`, or `.tgz` archive containing at
 least three FASTA files. Each FASTA file is treated as one genome. Files may be
 gzip-compressed and may be placed in subdirectories inside the archive.
 
-Alternatively, select a `.txt` or `.list` file such as `all_list.txt`; the
+Alternatively, select a `.txt` or `.list` file such as `list_ecoli.txt`; the
 workflow detects list input automatically from its filename.
 Paths in the list are resolved automatically relative to the list's directory
 or its S3 bucket root. Full `s3://BUCKET/key` paths are also accepted.
@@ -42,12 +42,18 @@ a folder named after the input collection, and combined plots are placed in
 See [Usage](usage.md) for parameter details and [Output](output.md) for a
 description of every generated file.
 
+The public example area provides 12 *Escherichia coli* genomes under the
+`ecoli` name and 20 complete *Klebsiella pneumoniae* RefSeq assemblies under
+the `klebsiella` name. Each is available as an archive, a folder of
+gzip-compressed FASTA files, and a `list_<name>.txt` file. See
+[Usage](usage.md#example-datasets) for the exact S3 paths and a combined run.
+
 ## Local execution
 
 With Nextflow and Docker installed, run the same workflow locally with:
 
 ```bash
-nextflow run . --input genomes.tar.gz --outdir results
+nextflow run . --input data/fa --outdir results/ecoli
 ```
 
 Quote wildcard input so that Nextflow, rather than the shell, resolves it:

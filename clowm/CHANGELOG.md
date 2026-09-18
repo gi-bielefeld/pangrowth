@@ -42,8 +42,10 @@ and workflow versions follow [Semantic Versioning](https://semver.org/).
 
 * Folder input through CloWM's mixed path picker, using supported FASTA files
   directly inside the selected folder while deliberately ignoring subfolders.
-* CloWM **Try it out** parameters for a 12-genome *Escherichia coli* example
-  archive.
+* Public examples containing 12 *Escherichia coli* genomes and 20 complete
+  *Klebsiella pneumoniae* RefSeq assemblies. Each is available as an archive,
+  a folder of gzip-compressed FASTA files, and a FASTA list. CloWM's **Try it
+  out** parameters use the *E. coli* archive.
 * Multi-pangenome execution from comma- or whitespace-separated input paths,
   an input wildcard, or parameter arrays for direct Nextflow use, with one
   result folder per collection and combined comparison plots in `all/`.
