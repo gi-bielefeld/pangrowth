@@ -9,6 +9,24 @@ CloWM's **Try it out** button selects
 *Escherichia coli* genomes. You must still select an output directory before
 starting the workflow.
 
+### Input folder
+
+Select a folder as **Input** (`input`). Every supported FASTA file directly
+inside that folder is treated as one genome. Supported endings are `.fa`,
+`.fasta`, `.fna`, and `.ffn`, optionally followed by `.gz`, and matching is
+case-insensitive. Subfolders are deliberately ignored.
+
+For example, the repository's local example genomes can be selected with:
+
+```bash
+nextflow run . --input data/fa --outdir results/ecoli
+```
+
+On CloWM, use the corresponding S3 folder URI, without a wildcard, for example
+`s3://BUCKET/ecoli`. The folder itself defines one pangenome and its basename
+(`ecoli` here) becomes the result-folder name and plot label. At least three
+supported FASTA files must be present directly in the folder.
+
 ### Input archive
 
 Select a `.zip`, `.tar.gz`, or `.tgz` archive containing at least
@@ -97,9 +115,9 @@ it is not a lightweight input check.
 
 ### Comparing pangenomes
 
-One selected list or archive defines one pangenome. To analyse and compare
-specific collections in CloWM, switch **Input** to **Raw** and separate their
-paths with commas (recommended) or whitespace:
+One selected folder, list, or archive defines one pangenome. To analyse and
+compare specific collections in CloWM, switch **Input** to **Raw** and separate
+their paths with commas (recommended) or whitespace:
 
 ```text
 s3://initial-bucket-4853e34c/yeast/cerevisiae.txt,s3://initial-bucket-4853e34c/yeast/paradoxus.txt
@@ -112,19 +130,20 @@ use a wildcard that matches the collection files:
 s3://initial-bucket-4853e34c/yeast/*/all_list.txt
 ```
 
-CloWM's current parameter form has no multi-file picker for a single workflow
-parameter, so multiple explicit paths use Raw mode. You can still select one
-exact file normally. A wildcard must match only supported collection files;
-each matched file is validated independently. Direct Nextflow use additionally
-accepts an array of paths if parameters are supplied through a JSON or YAML
-file.
+CloWM's current parameter form has no multi-input picker for a single workflow
+parameter, so multiple explicit paths use Raw mode. You can select one exact
+file or folder normally. A wildcard must match only supported collection files
+or folders; each match is validated independently. Direct Nextflow use
+additionally accepts an array of paths if parameters are supplied through a
+JSON or YAML file.
 
-The collection filename, without `.txt`, `.list`, `.zip`, `.tar.gz`, or
-`.tgz`, becomes its output folder and plot label. Thus `cerevisiae.txt` becomes
-`cerevisiae/`. Unsafe characters are replaced with underscores, duplicate
-names receive `_2`, `_3`, and so on, and the filename `all` becomes
-`all_input`. With at least two collections, the workflow also creates `all/`
-containing plots with every pangenome.
+The folder name or collection filename, without `.txt`, `.list`, `.zip`,
+`.tar.gz`, or `.tgz`, becomes its output folder and plot label. Thus
+`cerevisiae.txt` and a folder named `cerevisiae` both become `cerevisiae/`.
+Unsafe characters are replaced with underscores, duplicate names receive `_2`,
+`_3`, and so on, and the name `all` becomes `all_input`. With at least two
+collections, the workflow also creates `all/` containing plots with every
+pangenome.
 
 ### Output directory
 

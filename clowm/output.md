@@ -1,7 +1,7 @@
 # Output files
 
-Each input collection has its own output folder, named after its list or
-archive file. If several collections are supplied, `all/` contains combined
+Each input collection has its own output folder, named after its folder, list,
+or archive. If several collections are supplied, `all/` contains combined
 versions of the plots and fit summaries below. The `all/` folder does not
 duplicate numerical result tables.
 

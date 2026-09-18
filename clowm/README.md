@@ -1,7 +1,8 @@
 # pangrowth
 
 `pangrowth` estimates how a pangenome changes as genomes are sampled. From one
-or more genome archives or lists of nucleotide FASTA paths, this workflow:
+or more genome folders, archives, or lists of nucleotide FASTA paths, this
+workflow:
 
 * counts the frequency of each *k*-mer across genomes;
 * calculates the exact expected pangenome growth curve;
@@ -18,9 +19,12 @@ create the individual and combined visualisations.
 
 ## Input at a glance
 
-Upload a `.zip`, `.tar.gz`, or `.tgz` archive containing at least three FASTA
-files. Each FASTA file is treated as one genome. Files may be gzip-compressed
-and may be placed in subdirectories inside the archive.
+Select a folder containing at least three FASTA files. Only FASTA files
+directly inside it are used; subdirectories are not searched.
+
+Alternatively, upload a `.zip`, `.tar.gz`, or `.tgz` archive containing at
+least three FASTA files. Each FASTA file is treated as one genome. Files may be
+gzip-compressed and may be placed in subdirectories inside the archive.
 
 Alternatively, select a `.txt` or `.list` file such as `all_list.txt`; the
 workflow detects list input automatically from its filename.
@@ -29,10 +33,10 @@ or its S3 bucket root. Full `s3://BUCKET/key` paths are also accepted.
 Nextflow stages the listed files automatically using the selected S3 provider
 and your bucket permissions.
 
-To compare several pangenomes, enter comma-separated file paths using the
-Input field's Raw mode, or enter a wildcard that matches several list files or
-archives. Each collection is analysed separately. Its results are placed in a
-folder named after the collection file, and combined plots are placed in
+To compare several pangenomes, enter comma-separated paths using the Input
+field's Raw mode, or enter a wildcard that matches several folders, list files,
+or archives. Each collection is analysed separately. Its results are placed in
+a folder named after the input collection, and combined plots are placed in
 `all/`.
 
 See [Usage](usage.md) for parameter details and [Output](output.md) for a

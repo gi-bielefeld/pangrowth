@@ -4,12 +4,19 @@ include { PANGROWTH } from './modules/pangrowth'
 include { PLOT } from './modules/plotting'
 
 
-def datasetStem(inputFile) {
-    def stem = inputFile.name.replaceFirst(/(?i)\.(tar\.gz|tgz|zip|txt|list)$/, '')
+def datasetStem(inputPath, inputType) {
+    def stem = inputPath.name
+    if (inputType != 'directory') {
+        stem = stem.replaceFirst(/(?i)\.(tar\.gz|tgz|zip|txt|list)$/, '')
+    }
     stem = stem.replaceAll(/[^A-Za-z0-9._-]+/, '_')
         .replaceAll(/^[-_.]+/, '')
         .replaceAll(/[-_.]+$/, '')
     return stem ?: 'pangenome'
+}
+
+def isFastaPath(path) {
+    return path.name ==~ /(?i).+\.(fa|fasta|fna|ffn)(\.gz)?/
 }
 
 def readFastaList(inputList) {
@@ -61,47 +68,70 @@ def readFastaList(inputList) {
     return genomes
 }
 
+def readFastaDirectory(inputDir) {
+    // A single '*' deliberately limits directory inputs to immediate children.
+    def resolved = file(inputDir.resolve('*').toString())
+    def candidates = resolved instanceof Collection ? resolved : [resolved]
+    def genomes = candidates
+        .findAll { it.exists() && !it.isDirectory() && isFastaPath(it) }
+        .unique { it.toUri().toString() }
+        .sort { left, right -> left.toUri().toString() <=> right.toUri().toString() }
+    if (genomes.size() < 3) {
+        error("Input directory '${inputDir}' must contain at least three FASTA files directly inside it; found ${genomes.size()}. Subdirectories are not searched.")
+    }
+    return genomes
+}
+
 
 workflow {
     if (!params.input) {
-        error('Provide --input with an archive, FASTA list, or a pattern matching several such files.')
+        error('Provide --input with a directory, archive, FASTA list, or a pattern matching several such inputs.')
     }
 
     def rawInputs = params.input instanceof Collection ? params.input : [params.input]
     def inputPatterns = rawInputs.collectMany { rawInput ->
         rawInput.toString().split(/[\s,]+/).findAll { it }
     }
-    def selectedInputFiles = inputPatterns.collectMany { pattern ->
+    def selectedInputs = inputPatterns.collectMany { pattern ->
         def resolved = file(pattern.toString())
         def candidates = resolved instanceof Collection ? resolved : [resolved]
-        return candidates.findAll { it.exists() && !it.isDirectory() }
+        return candidates.findAll { it.exists() }
     }.unique { it.toUri().toString() }
         .sort { left, right -> left.toUri().toString() <=> right.toUri().toString() }
-    if (selectedInputFiles.isEmpty()) {
+    if (selectedInputs.isEmpty()) {
         error("Input did not match any readable files: '${params.input}'.")
     }
 
     def usedIds = [:]
-    def datasets = selectedInputFiles.collect { inputFile ->
-        def lowerName = inputFile.name.toLowerCase()
+    def datasets = selectedInputs.collect { inputPath ->
+        def lowerName = inputPath.name.toLowerCase()
         def inputType
-        if (lowerName.endsWith('.txt') || lowerName.endsWith('.list')) {
+        if (inputPath.isDirectory()) {
+            inputType = 'directory'
+        } else if (lowerName.endsWith('.txt') || lowerName.endsWith('.list')) {
             inputType = 'list'
         } else if (lowerName.endsWith('.zip') || lowerName.endsWith('.tar.gz') || lowerName.endsWith('.tgz')) {
             inputType = 'archive'
         } else {
-            error("Unsupported input '${inputFile.name}': use a .txt or .list FASTA list, or a .zip, .tar.gz, or .tgz archive.")
+            error("Unsupported input '${inputPath.name}': use a directory, a .txt or .list FASTA list, or a .zip, .tar.gz, or .tgz archive.")
         }
 
-        def baseId = datasetStem(inputFile)
+        def baseId = datasetStem(inputPath, inputType)
         if (baseId == 'all') {
             baseId = 'all_input'
         }
         def occurrence = (usedIds[baseId] ?: 0) + 1
         usedIds[baseId] = occurrence
         def datasetId = occurrence == 1 ? baseId : "${baseId}_${occurrence}"
-        def inputFiles = inputType == 'list' ? readFastaList(inputFile) : [inputFile]
-        return tuple(datasetId, inputFile.name, inputType, inputFiles)
+        def inputFiles
+        if (inputType == 'list') {
+            inputFiles = readFastaList(inputPath)
+        } else if (inputType == 'directory') {
+            inputFiles = readFastaDirectory(inputPath)
+        } else {
+            inputFiles = [inputPath]
+        }
+        return tuple(datasetId, inputPath.name, inputType, inputFiles)
     }
 
     PANGROWTH(Channel.fromList(datasets))

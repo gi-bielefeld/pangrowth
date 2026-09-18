@@ -22,7 +22,7 @@ process PANGROWTH {
     script:
     def stagedFiles = inputFiles instanceof List ? inputFiles : [inputFiles]
     def prepareInput
-    if (inputType == 'list') {
+    if (inputType == 'list' || inputType == 'directory') {
         // Use Nextflow's staged paths, including the numbered directories that
         // prevent collisions when multiple genomes have the same filename.
         prepareInput = "printf '%s\\n' ${stagedFiles.collect { shellQuote(it) }.join(' ')} > fasta_files.list"

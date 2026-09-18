@@ -13,10 +13,10 @@
       "properties": {
         "input": {
           "type": "string",
-          "format": "file-path-pattern",
-          "fa_icon": "fas fa-file",
-          "description": "Genome archive(s) or FASTA list file(s)",
-          "help_text": "Select one file, or use Raw input to enter several file paths separated by commas or whitespace. A wildcard pattern can also match several files (for example s3://BUCKET/pangenomes/*.txt). Commas are recommended; input paths cannot themselves contain commas or whitespace. Types are detected automatically: .txt and .list files contain one FASTA path per line; .zip, .tar.gz, and .tgz files are genome archives. Every selected file defines one pangenome. At least three genomes are required per pangenome."
+          "format": "path",
+          "fa_icon": "fas fa-folder-open",
+          "description": "Genome folder(s), archive(s), or FASTA list file(s)",
+          "help_text": "Select one file or folder. In Raw mode, several input paths can be separated by commas or whitespace, and a wildcard pattern can match several inputs (for example s3://BUCKET/pangenomes/*.txt). Commas are recommended; input paths cannot themselves contain commas or whitespace. Types are detected automatically: a folder contributes FASTA files directly inside it (subfolders are ignored), .txt and .list files contain one FASTA path per line, and .zip, .tar.gz, and .tgz files are genome archives. Every folder or selected file defines one pangenome. At least three genomes are required per pangenome."
         },
         "outdir": {
           "type": "string",

@@ -40,6 +40,8 @@ and workflow versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+* Folder input through CloWM's mixed path picker, using supported FASTA files
+  directly inside the selected folder while deliberately ignoring subfolders.
 * CloWM **Try it out** parameters for a 12-genome *Escherichia coli* example
   archive.
 * Multi-pangenome execution from comma- or whitespace-separated input paths,
