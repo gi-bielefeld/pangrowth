@@ -12,6 +12,10 @@ or more genome archives or lists of nucleotide FASTA paths, this workflow:
 PDF plots and plain-text numerical results are produced automatically for
 downstream use.
 
+The workflow records computation and plotting as separate Nextflow processes:
+`PANGROWTH` creates the numerical results, and `PLOT` consumes those results to
+create the individual and combined visualisations.
+
 ## Input at a glance
 
 Upload a `.zip`, `.tar.gz`, or `.tgz` archive containing at least three FASTA

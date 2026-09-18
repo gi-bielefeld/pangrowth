@@ -49,6 +49,8 @@ corresponding fit succeed:
 
 ## Log
 
-`pangrowth.log` records the effective workflow parameters, discovered FASTA
-files, progress messages, diagnostic output from pangrowth, and any plotting
-warnings.
+* `pangrowth.log` records the effective workflow parameters, discovered FASTA
+  files, progress messages, and diagnostic output from Pangrowth. It is present
+  in each input collection's folder.
+* `pangrowth_plot.log` records plot generation and any plotting warnings. It is
+  present in each input collection's folder and in `all/` for a comparison run.

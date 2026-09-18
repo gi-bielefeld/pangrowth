@@ -19,6 +19,9 @@ and workflow versions follow [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+* Move the Nextflow entrypoint to the repository-root `main.nf` and keep the
+  Pangrowth and plotting processes in root-level `modules/`. Their executions
+  and data dependency are represented separately in provenance records.
 * Use *k*=31 and a quorum threshold of 0.9 by default. The strict-core and
   quorum-core curves are now calculated and plotted separately. At a quorum of
   1.0, reuse the strict-core calculation instead of running it twice.
