@@ -37,6 +37,8 @@ and workflow versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+* CloWM **Try it out** parameters for a 12-genome *Escherichia coli* example
+  archive.
 * Multi-pangenome execution from comma- or whitespace-separated input paths,
   an input wildcard, or parameter arrays for direct Nextflow use, with one
   result folder per collection and combined comparison plots in `all/`.

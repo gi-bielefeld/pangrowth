@@ -2,6 +2,13 @@
 
 ## Input / Output
 
+### Example dataset
+
+CloWM's **Try it out** button selects
+`s3://workflow-exampledata/pangrowth/ecoli.tar.gz`, an archive containing 12
+*Escherichia coli* genomes. You must still select an output directory before
+starting the workflow.
+
 ### Input archive
 
 Select a `.zip`, `.tar.gz`, or `.tgz` archive containing at least

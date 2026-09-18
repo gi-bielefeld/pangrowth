@@ -5,6 +5,9 @@
   "outputParameters": [
     "outdir"
   ],
+  "exampleParameters": {
+    "input": "s3://workflow-exampledata/pangrowth/ecoli.tar.gz"
+  },
   "dois": [
     "10.24072/pcjournal.415"
   ]
