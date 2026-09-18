@@ -2,15 +2,18 @@ def shellQuote(value) {
     return "'" + value.toString().replace("'", "'\"'\"'") + "'"
 }
 
-process PLOT {
-    tag "${datasetId}"
+process PLOT_ALL {
+    tag 'all pangenomes'
     container 'ghcr.io/gi-bielefeld/pangrowth:clowm'
 
-    publishDir params.outdir, mode: 'copy', \
-        saveAs: { filename -> "${datasetId}/${filename}" }
+    publishDir "${params.outdir}/all", mode: 'copy'
 
     input:
-    tuple val(datasetId), path(histFile), path(growthFile), path(coreFile), path(quorumFile), path(hillFile)
+    tuple val(datasetIds), path(histFiles, stageAs: 'hist????/*'), \
+        path(growthFiles, stageAs: 'growth????/*'), \
+        path(coreFiles, stageAs: 'core????/*'), \
+        path(quorumFiles, stageAs: 'quorum????/*'), \
+        path(hillFiles, stageAs: 'hill????/*')
 
     output:
     path 'pangrowth_hist.pdf', optional: true
@@ -25,36 +28,41 @@ process PLOT {
     path 'pangrowth_plot.log'
 
     script:
-    def labelArg = "--label ${shellQuote(datasetId)}"
+    def labelArgs = datasetIds.collect { "--label ${shellQuote(it)}" }.join(' ')
+    def histArgs = histFiles.collect { shellQuote(it) }.join(' ')
+    def growthArgs = growthFiles.collect { shellQuote(it) }.join(' ')
+    def coreArgs = coreFiles.collect { shellQuote(it) }.join(' ')
+    def quorumArgs = quorumFiles.collect { shellQuote(it) }.join(' ')
+    def hillArgs = hillFiles.collect { shellQuote(it) }.join(' ')
     """
     set -euo pipefail
 
-    echo "Plots for: ${datasetId}" > pangrowth_plot.log
+    echo "Combined plots for: ${datasetIds.join(', ')}" > pangrowth_plot.log
 
-    if ! plot_hist.py ${labelArg} ${shellQuote(histFile)} pangrowth_hist.pdf >> pangrowth_plot.log 2>&1; then
+    if ! plot_hist.py ${labelArgs} ${histArgs} pangrowth_hist.pdf >> pangrowth_plot.log 2>&1; then
         echo "WARNING: Histogram plot generation failed." >> pangrowth_plot.log
         rm -f pangrowth_hist.pdf
     fi
-    if ! plot_hist.py --norm_x ${labelArg} ${shellQuote(histFile)} pangrowth_hist_percentage.pdf >> pangrowth_plot.log 2>&1; then
+    if ! plot_hist.py --norm_x ${labelArgs} ${histArgs} pangrowth_hist_percentage.pdf >> pangrowth_plot.log 2>&1; then
         echo "WARNING: Percentage histogram plot generation failed." >> pangrowth_plot.log
         rm -f pangrowth_hist_percentage.pdf
     fi
-    if ! plot_growth.py ${labelArg} ${shellQuote(growthFile)} pangrowth_growth.pdf \
+    if ! plot_growth.py ${labelArgs} ${growthArgs} pangrowth_growth.pdf \
         > pangrowth_growth_fit.txt 2>> pangrowth_plot.log; then
         echo "WARNING: Growth plot generation failed." >> pangrowth_plot.log
         rm -f pangrowth_growth.pdf pangrowth_growth_fit.txt
     fi
-    if ! plot_core.py ${labelArg} ${shellQuote(coreFile)} pangrowth_core.pdf \
+    if ! plot_core.py ${labelArgs} ${coreArgs} pangrowth_core.pdf \
         > pangrowth_core_fit.txt 2>> pangrowth_plot.log; then
         echo "WARNING: Core plot generation failed." >> pangrowth_plot.log
         rm -f pangrowth_core.pdf pangrowth_core_fit.txt
     fi
-    if ! plot_core.py ${labelArg} ${shellQuote(quorumFile)} pangrowth_quorum.pdf \
+    if ! plot_core.py ${labelArgs} ${quorumArgs} pangrowth_quorum.pdf \
         > pangrowth_quorum_fit.txt 2>> pangrowth_plot.log; then
         echo "WARNING: Quorum plot generation failed." >> pangrowth_plot.log
         rm -f pangrowth_quorum.pdf pangrowth_quorum_fit.txt
     fi
-    if ! plot_hill.py ${labelArg} ${shellQuote(hillFile)} pangrowth_hill.pdf >> pangrowth_plot.log 2>&1; then
+    if ! plot_hill.py ${labelArgs} ${hillArgs} pangrowth_hill.pdf >> pangrowth_plot.log 2>&1; then
         echo "WARNING: Hill-number plot generation failed." >> pangrowth_plot.log
         rm -f pangrowth_hill.pdf
     fi

@@ -14,8 +14,9 @@ PDF plots and plain-text numerical results are produced automatically for
 downstream use.
 
 The workflow records computation and plotting as separate Nextflow processes:
-`PANGROWTH` creates the numerical results, and `PLOT` consumes those results to
-create the individual and combined visualisations.
+`PANGROWTH` creates the numerical results, `PLOT` turns each pangenome's
+results into its own visualisations, and `PLOT_ALL` (only run when more than
+one pangenome is given) creates the combined visualisations.
 
 ## Input at a glance
 

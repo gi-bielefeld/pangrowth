@@ -2,6 +2,7 @@ nextflow.enable.dsl = 2
 
 include { PANGROWTH } from './modules/pangrowth'
 include { PLOT } from './modules/plotting'
+include { PLOT_ALL } from './modules/plotting_all'
 
 
 def datasetStem(inputPath, inputType) {
@@ -136,19 +137,7 @@ workflow {
 
     PANGROWTH(Channel.fromList(datasets))
 
-    // PLOT accepts lists of labels and result files, allowing the same process
-    // to create both per-pangenome and combined visualisations.
-    def plotInputs = PANGROWTH.out.results.map { datasetId, histFile, growthFile, coreFile, quorumFile, hillFile ->
-        tuple(
-            datasetId,
-            [datasetId],
-            [histFile],
-            [growthFile],
-            [coreFile],
-            [quorumFile],
-            [hillFile]
-        )
-    }
+    PLOT(PANGROWTH.out.results)
 
     if (datasets.size() > 1) {
         def combinedPlotInput = PANGROWTH.out.results
@@ -156,7 +145,6 @@ workflow {
             .map { resultRows ->
                 def rows = resultRows.sort { left, right -> left[0] <=> right[0] }
                 tuple(
-                    'all',
                     rows.collect { it[0] },
                     rows.collect { it[1] },
                     rows.collect { it[2] },
@@ -165,8 +153,6 @@ workflow {
                     rows.collect { it[5] }
                 )
             }
-        plotInputs = plotInputs.concat(combinedPlotInput)
+        PLOT_ALL(combinedPlotInput)
     }
-
-    PLOT(plotInputs)
 }

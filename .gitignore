@@ -24,5 +24,6 @@ benchmark
 test/
 .nextflow/
 .nextflow.log*
+*.log
 work/
 HowToCloWM.md
