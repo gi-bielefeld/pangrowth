@@ -42,9 +42,14 @@ cmake -B build
 cmake --build build -j 8
 ```
 
-This builds the main `pangrowth` executable. The default build does not link
-the ggcat C++ API. The executable is `build/pangrowth`; either call it by that
-path, add it to `PATH`, or run examples from inside the build directory.
+This builds the bundled Rmath library and the main `pangrowth` executable. You
+do not need to install Rmath separately. The default build does not link the
+ggcat C++ API. The executable is `build/pangrowth`; either call it by that path,
+add it to `PATH`, or run examples from inside the build directory.
+
+To use an Rmath 1.0.0 package already installed on the system instead, configure
+with `-DPANGROWTH_USE_SYSTEM_RMATH=ON` and, if necessary, point
+`CMAKE_PREFIX_PATH` or `Rmath_DIR` at its installation.
 
 Optional ggcat-enabled build:
 
@@ -82,14 +87,15 @@ python scripts/plot_hist.py hist.txt hist.pdf
     <img src="png/hist.png" width="750" alt="k-mer frequency histogram of 12 ecoli">
 </p>
 
-If you have multiple histograms that you want to compare with different number
-of genomes you can use:
+If you have multiple histograms with different numbers of genomes, compare
+them on five-percentage-point frequency bins with:
 
 ```bash
-python scripts/plot_hist.py --norm_x --norm_y=both hist.txt data/hist_ecoli_n50.txt data/hist_ecoli_n200.txt hist_multiple.pdf
+python scripts/plot_hist.py --norm_x hist.txt data/hist_ecoli_n50.txt data/hist_ecoli_n200.txt hist_multiple.pdf
 ```
 
-- The flag `--norm_x` normalize the x-axis to be between (0,1].
+- The flag `--norm_x` groups the x-axis into 5%, 10%, ..., 100% bins. It does
+  not alter the y values.
 - The flag `--norm_y` allows two types of normalization: 
     - `multiplicity` which adjusts each histogram value h[i] multiplying it by its
       index i (i.e., h[i] * i, this means that values appearing once remain the same,
@@ -167,6 +173,20 @@ Hill numbers measure pangenome diversity (species richness, exponential entropy,
 - `-f FILE` reads sample points from a file (one integer per line), overriding `-p`
 
 The output is a tab-separated table with columns: `fit`, `m`, `richness`, `exp_entropy`, `inv_simpson`, where `fit` is `int` (interpolation), `obs` (observed), or `ext` (extrapolation) and `m` is the number of genomes.
+
+Plot the three Hill-number measures with solid interpolation, the observed
+sample as a point, and dashed extrapolation:
+
+```bash
+python scripts/plot_hill.py hill.tsv hill.pdf
+```
+
+Several Hill tables can be compared in the same figure. Each series is named
+after its input file (without the directory):
+
+```bash
+python scripts/plot_hill.py sample_a.tsv sample_b.tsv hill.pdf
+```
 
 ### Colored compacted de Bruijn graph
 

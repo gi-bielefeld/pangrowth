@@ -1,7 +1,7 @@
 #
 # Copyright 2018 The Statslabs Authors.
 #
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 3.10)
 project(rmath VERSION 1.0.0 LANGUAGES C)
 
 set(CMAKE_C_STANDARD 99)
@@ -111,6 +111,3 @@ install(FILES
         )
 
 export(EXPORT rmath-targets FILE ${CMAKE_CURRENT_BINARY_DIR}/RmathTargets.cmake NAMESPACE Rmath::)
-
-# Register package in user's package registry
-export(PACKAGE Rmath)

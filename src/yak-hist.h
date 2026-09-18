@@ -305,7 +305,7 @@ void output_hist_kmer(int argc, char *argv[]){
 		fprintf(stderr, "  -t INT     number of worker threads [%d]\n", opt.n_thread);
 		fprintf(stderr, "  -i PATH    file containing a list of fasta files on each line\n");
 		fprintf(stderr, "  -b         turn off transformation into canonical [%d]\n", opt.canonical);
-		fprintf(stderr, "  -s INT     suffix size for k-mer [%d]\n", opt.n_thread);
+		fprintf(stderr, "  -s INT     suffix size in bits for k-mer [%d]\n", opt.suf);
 		fprintf(stderr, "  -c INT     min k-mer count within a file to consider it present [1]\n");
 		//fprintf(stderr, "  -K INT     chunk size [100m]\n");
 		return;
