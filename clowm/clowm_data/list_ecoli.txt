@@ -1,0 +1,12 @@
+pangrowth/ecoli/GCF_001677475.2_ASM167747v2_genomic.fna.gz
+pangrowth/ecoli/GCF_001677495.1_ASM167749v1_genomic.fna.gz
+pangrowth/ecoli/GCF_000784925.1_ASM78492v1_genomic.fna.gz
+pangrowth/ecoli/GCF_000005845.2_ASM584v2_genomic.fna.gz
+pangrowth/ecoli/GCF_001612495.1_ASM161249v1_genomic.fna.gz
+pangrowth/ecoli/GCF_001644745.1_ASM164474v1_genomic.fna.gz
+pangrowth/ecoli/GCF_001612475.1_ASM161247v1_genomic.fna.gz
+pangrowth/ecoli/GCF_001645235.2_ASM164523v2_genomic.fna.gz
+pangrowth/ecoli/GCF_000008865.2_ASM886v2_genomic.fna.gz
+pangrowth/ecoli/GCF_001806285.1_ASM180628v1_genomic.fna.gz
+pangrowth/ecoli/GCF_001721125.1_ASM172112v1_genomic.fna.gz
+pangrowth/ecoli/GCF_001806265.1_ASM180626v1_genomic.fna.gz
